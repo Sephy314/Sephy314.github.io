@@ -37,9 +37,37 @@ const skills = [
     items: ['Reliability', 'Observability', 'Testing', 'CI/CD'],
   },
 ];
+
+const schema = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      name: 'Sephy314',
+      url: 'https://sephy314.github.io',
+      description:
+        'Backend / distributed systems engineer. Security, protocols, infrastructure, and reliability.',
+      inLanguage: 'en',
+      author: { '@type': 'Person', name: 'Sephy314', url: 'https://github.com/Sephy314' },
+    },
+    {
+      '@type': 'Person',
+      name: 'Sephy314',
+      url: 'https://sephy314.github.io',
+      jobTitle: 'Backend / Distributed Systems Engineer',
+      description:
+        'Backend / distributed systems engineer focused on secure authentication, distributed architecture, network protocols, and cloud infrastructure.',
+      sameAs: ['https://github.com/Sephy314', 'https://www.linkedin.com/in/davie-ryu/'],
+    },
+  ],
+};
 ---
 
 <BaseLayout title="Backend / Distributed Systems Engineer">
+  <Fragment slot="head">
+    <script type="application/ld+json" is:inline set:html={JSON.stringify(schema)} />
+  </Fragment>
+
   <!-- ── Hero ─────────────────────────────────────────── -->
   <section class="border-b border-edge">
     <div class="mx-auto max-w-5xl px-5 py-20 sm:py-28">

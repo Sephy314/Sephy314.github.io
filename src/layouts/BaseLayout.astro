@@ -31,13 +31,20 @@ const canonical = new URL(Astro.url.pathname, Astro.site ?? Astro.url.origin).to
 
     <title>{pageTitle}</title>
     <meta name="description" content={description} />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="googlebot" content="index, follow" />
     <link rel="canonical" href={canonical} />
 
     <meta property="og:type" content={ogType} />
+    <meta property="og:site_name" content="Sephy314" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:title" content={pageTitle} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical} />
     <meta name="twitter:card" content="summary" />
+
+    <!-- Page-specific head additions (JSON-LD, etc.) -->
+    <slot name="head" />
   </head>
 
   <body class="flex min-h-screen flex-col">

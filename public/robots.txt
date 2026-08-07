@@ -1,0 +1,5 @@
+# Sephy314.github.io — allow all crawlers, point to the sitemap.
+User-agent: *
+Allow: /
+
+Sitemap: https://sephy314.github.io/sitemap-index.xml
