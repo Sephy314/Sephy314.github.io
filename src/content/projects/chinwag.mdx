@@ -1,0 +1,204 @@
+---
+title: "Chinwag"
+tagline: "A secure distributed communication platform designed with modern authentication and scalable backend architecture."
+description: "Real-time streaming chat service built as a small microservice architecture — Go (Echo) + Next.js, DPoP (RFC 9449) authentication, and CQRS reconciled over NATS JetStream."
+category: "Distributed Systems / Security"
+status: "active"
+featured: true
+order: 1
+languages: ["Go", "TypeScript"]
+tech: ["Echo", "Next.js", "NATS JetStream", "Redis", "PostgreSQL", "k3s", "DPoP", "JWKS", "CQRS"]
+repo: "https://github.com/Sephy314/Chinwag"
+started: "2026-06"
+updated: "2026-08"
+highlights:
+  - "DPoP (RFC 9449) sender-constrained bearer tokens with replay protection"
+  - "CQRS split across command/query services with a transactional outbox"
+  - "JWK auto-rotation scheduler and refresh-token lineage tracking"
+  - "Single-use WebSocket tickets so tokens never leak into connection URLs"
+  - "Pure-manifest k3s deployment (no Helm)"
+---
+
+import ArchitectureDiagram from '../../components/ArchitectureDiagram.astro';
+import CodeSnippet from '../../components/CodeSnippet.astro';
+import SystemOverview from '../../components/SystemOverview.astro';
+
+## Overview
+
+Chinwag is a real-time streaming chat service built on a small microservice architecture. It is not a
+demo wrapper around a chat SDK — the interesting parts are the ones that are usually hidden: how a token
+proves it is being used by the entity it was issued to, how a write eventually becomes a consistent read,
+and how five services stay deployable on a single-node k3s cluster.
+
+Backend in Go (Echo v5), frontend in Next.js (React 19). Communication between services is event-driven
+over NATS JetStream, and the whole stack ships with a pure-manifest Kubernetes deployment.
+
+## System Layout
+
+<ArchitectureDiagram
+  title="Chinwag — system layout"
+  layers={[
+    { label: 'client', nodes: ['Next.js Frontend (React 19)', 'WebSocket client'] },
+    { label: 'edge', nodes: ['API Gateway — Echo reverse proxy (path/method routing, CORS, auth)'] },
+    { label: 'services', nodes: ['Auth Service', 'Room Service', 'Chat Command (writes + WS hub)', 'Chat Query (reads / projection)'] },
+    { label: 'shared infra', nodes: ['PostgreSQL (per-service schemas)', 'Redis (AOF)', 'NATS JetStream (CHAT_EVENTS)'] },
+  ]}
+  caption="The frontend talks HTTP + WebSocket through a single gateway. Writes and reads are split across command/query services and reconciled via the event stream."
+/>
+
+The gateway is the only public entry point. Path-based routing splits traffic:
+
+- `/auth/*` → Auth Service
+- `/rooms/*`, `/users/*` → Room Service
+- `/chat/*` GET → Chat Query Service
+- `/chat/*` POST/PUT/DELETE + WebSocket upgrade → Chat Command Service
+
+This gives a single surface for CORS, auth middleware, and observability, while keeping every service
+independently deployable.
+
+## Authentication & Security
+
+### DPoP (RFC 9449) — sender-constrained tokens
+
+Bearer tokens alone are bearer tokens: anyone who holds one can use it. Chinwag constrains tokens to a
+proof of possession key using **DPoP (RFC 9449)**.
+
+The flow, as implemented in `backend/shared/auth/dpop` and reused by every service:
+
+1. The client generates an ephemeral ES256 key pair and attaches a signed **DPoP proof** to every request
+   via the `DPoP` header.
+2. The proof's `jkt` — the RFC 7638 thumbprint of the proof key — must match the `cnf.jkt` claim inside the
+   access token. If they differ, the request is rejected: the token is cryptographically bound to the key.
+3. **Replay protection** is enforced atomically with Redis Lua scripts:
+   - `dpop:nonce:*` — the server-issued nonce can be consumed only once.
+   - `dpop:jti:*` — the proof's `jti` can be used only once.
+4. On a `use_dpop_nonce` challenge, the client reads the `DPoP-Nonce` response header and retries **at most
+   once**. Shared key prefixes keep the nonce space consistent across all services.
+5. `htu` (HTTP target URI) is reconstructed from the gateway-set `X-Forwarded-*` headers (`RequestHTU`), so
+   the proof binds to the URI the client actually called.
+
+### JWKS and automatic key rotation
+
+- The Auth Service signs JWTs and issues public keys at `/.well-known/jwks.json`.
+- A **rotation scheduler** runs at midnight and swaps signing keys automatically — verification always
+  succeeds during and after rotation because both old and new keys remain published for a grace window.
+
+### Refresh-token rotation with lineage tracking
+
+Refresh tokens are single-use and consumed via a Redis Lua script that tracks a **lineage ID**. If a
+lineage ID is ever seen twice, the token is being replayed — the entire lineage is revoked, which contains
+the damage from a stolen token.
+
+### WebSocket tickets
+
+WebSocket URLs can leak into logs and proxies, so access tokens are never placed in the query string. The
+client first authenticates with DPoP to a `/ws-ticket` endpoint and receives a **single-use ticket**, which
+is consumed atomically at connection upgrade. Connections run heartbeats (ping/pong) and an exponential
+backoff reconnection policy.
+
+## CQRS & Event-Driven Architecture
+
+Chinwag separates chat into a command path and a query path — Command Query Responsibility Segregation —
+with the two reconciled by an event stream rather than a shared write path.
+
+<CodeSnippet title="write path — command service" lang="text">
+
+```text
+POST /chat/rooms/{id}/messages
+        │  transaction
+        ▼
+  INSERT message (PostgreSQL)
+        │
+  INSERT outbox row (same txn) ──► outbox publisher
+        │                              │
+        ▼                              ▼
+  WebSocket hub broadcast      NATS JetStream (chat.room.*)
+                                     │ consumer: chat-projection
+                                     ▼
+                              projection table (PostgreSQL)
+                                     │
+                              GET /chat/...  ──►  Redis cache (chat:*)
+```
+
+</CodeSnippet>
+
+- **Command** — a write persists the message and an outbox event (`message_created` / `updated` / `deleted`)
+  in the *same transaction*. The outbox publisher forwards to NATS, and the WebSocket hub broadcasts in real
+  time. The outbox pattern means the DB and the event stream can never drift apart: no two-phase commit
+  across a database and a broker.
+- **Query** — the `chat-projection` NATS consumer builds a projection table, which reads hit Redis
+  (`chat:*`) with **cursor-based pagination**. Reads are cheap and never contend with writes.
+- **Fault tolerance** — if a consumer or a service is down, JetStream retains the stream; on recovery the
+  projection catches up from the last acknowledged offset. The query side is eventually consistent by
+  design, with the outbox guaranteeing no event is lost.
+
+## Data & Infrastructure
+
+<SystemOverview
+  title="shared infrastructure"
+  items={[
+    { label: 'PostgreSQL', value: 'Single StatefulSet holding four schemas — chinwag_auth, chinwag_room, chinwag_chat, chinwag_chat_projection. Per-service schemas keep ownership explicit without multiplying clusters.' },
+    { label: 'Redis (AOF)', value: 'Refresh tokens, DPoP nonce/jti, WS tickets, read caching, distributed locks. AOF persistence survives restarts; Lua scripts provide atomic replay checks.' },
+    { label: 'NATS JetStream', value: 'CHAT_EVENTS event stream created automatically by the chat-command service. Backbone of outbox publishing and CQRS consumption.' },
+    { label: 'Traefik Ingress', value: 'Routes /auth, /rooms, /users, /chat to the gateway (incl. WebSocket upgrade) and / to the frontend.' },
+  ]}
+/>
+
+## Engineering Challenges
+
+- **Replay prevention in a distributed setting.** Nonce and `jti` checks must be atomic *and* shared across
+  services. Redis Lua scripts give both — a single round-trip, no read-modify-write race.
+- **Keeping tokens out of URLs.** WebSocket upgrades traditionally authenticate via query strings. The
+  single-use ticket endpoint decouples the long-lived connection from the token lifecycle.
+- **Consistency without a distributed transaction.** The command service cannot atomically write to both
+  PostgreSQL and NATS. The transactional outbox makes the broker a *projection of the database*, not a
+  peer transaction participant.
+- **Zero-downtime key rotation.** Rotating signing keys can invalidate every outstanding token. Publishing
+  old and new keys together for a grace window makes rotation transparent to verifiers.
+- **Eventual consistency in a chat UX.** Projection lag is real. Cursor pagination plus a per-message event
+  idempotency model (via `jti` on the wire) keeps reconnects and re-deliveries safe.
+
+## Design Decisions
+
+| Decision | Rationale |
+| --- | --- |
+| Separate Auth Service | Authentication is a security boundary, not a feature. Isolating it means DPoP/JWKS logic is owned in one place and reused via `backend/shared/auth`, and a compromise in chat cannot weaken token verification. |
+| API gateway in front | One place for CORS, auth, routing, and future rate limiting/observability; services stay unexposed. |
+| CQRS + outbox over a shared DB | Read-heavy chat traffic is isolated from write contention; the outbox gives exactly-once-enough delivery semantics without distributed transactions. |
+| Pure-manifest k3s, no Helm | One cluster, five services, zero infrastructure ceremony. Manifests are the source of truth and readable top-to-bottom. |
+| WebSocket tickets | Eliminates the class of bugs where an access token appears in a proxy log or a browser history URL. |
+
+## Lessons Learned
+
+- DPoP is worth the complexity once you accept that tokens are bearer by default; sender-constraining them
+  is a defensive layer that costs one key pair and a header.
+- The outbox pattern is the single highest-leverage reliability decision in the system. It converts a
+  hard "write to DB and broker" problem into a "write to DB, let something else read it" problem.
+- Redis Lua scripts are the right tool for small, hot, atomic operations — nonce and `jti` checks, token
+  lineage — but every one of them must be idempotent under retry.
+- Per-service schemas on one Postgres instance is a pragmatic middle ground for a small system: real
+  isolation semantics without the operational cost of per-service clusters.
+- Eventual consistency is only a problem if the product pretends it is not eventual. Exposing "sent but not
+  yet durable" states explicitly beats hiding them.
+
+## Deployment
+
+The project ships a Dockerfile per component (a parameterized multi-stage builder with
+`--build-arg SERVICE=...`) and `infra/k3s/` with the full manifest set: Namespace, ConfigMap, Secret,
+Postgres/Redis/NATS, all Deployments + Services, and a Traefik Ingress.
+
+```bash
+cd infra/k3s
+./build-images.sh --load      # build images, import into local k3s
+kubectl apply -k infra/k3s    # apply everything
+kubectl -n chinwag get pods
+curl -s http://chinwag.local/health
+```
+
+Secrets (DB/Redis passwords, optional Google OAuth) live in `infra/k3s/secret.yaml` and must be rotated
+before any non-local deployment.
+
+<blockquote>
+Chinwag demonstrates the full arc of a production-shaped system: sender-constrained authentication,
+command/query separation, an event backbone, and a reproducible cluster deployment.
+</blockquote>

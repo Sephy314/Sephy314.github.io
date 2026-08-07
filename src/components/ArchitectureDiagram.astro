@@ -1,0 +1,50 @@
+---
+interface Layer {
+  label?: string;
+  nodes: string[];
+}
+
+interface Props {
+  title?: string;
+  layers: Layer[];
+  caption?: string;
+}
+
+const { title, layers, caption } = Astro.props;
+---
+
+<figure class="my-6 overflow-hidden rounded-xl border border-edge bg-panel">
+  {title && (
+    <figcaption class="border-b border-edge bg-panel-2 px-4 py-2 font-mono text-xs text-mute">
+      {title}
+    </figcaption>
+  )}
+
+  <div class="px-4 py-5">
+    {layers.map((layer, i) => (
+      <div>
+        <div class="flex flex-wrap items-center justify-center gap-2">
+          {layer.nodes.map((node) => (
+            <span
+              class="rounded-lg border border-edge-2 bg-panel-2 px-3 py-1.5 font-mono text-[0.78rem] leading-5 text-text"
+            >
+              {node}
+            </span>
+          ))}
+        </div>
+
+        {i < layers.length - 1 && (
+          <div class="flex flex-col items-center py-1.5" aria-hidden="true">
+            <span class="font-mono text-xs text-edge-2">↓</span>
+          </div>
+        )}
+      </div>
+    ))}
+  </div>
+
+  {caption && (
+    <p class="border-t border-edge bg-panel-2 px-4 py-2 font-mono text-[0.7rem] leading-5 text-mute">
+      {caption}
+    </p>
+  )}
+</figure>

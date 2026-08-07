@@ -1,0 +1,177 @@
+---
+title: "plaything_v2"
+tagline: "A modular Discord bot that combines server management, media playback, speech, and automation behind a strict layered architecture."
+description: "Python 3.13 Discord bot. Dependency-injection container, repository/service/cog layering, PostgreSQL + Alembic persistence, RCON-based Minecraft server lifecycle, and a bounded-queue logging pipeline."
+category: "Infrastructure / Automation"
+status: "active"
+featured: false
+side: true
+order: 4
+languages: ["Python"]
+tech: ["Python 3.13", "discord.py", "SQLAlchemy 2.0", "Alembic", "PostgreSQL", "APScheduler", "RCON", "Docker"]
+repo: "https://github.com/Sephy314/plaything_v2"
+started: "2026-08"
+updated: "2026-08"
+highlights:
+  - "Strict layering: repositories run SQL only, services own business logic, cogs expose commands"
+  - "DI container composes the whole dependency graph once at startup"
+  - "Full Minecraft server lifecycle over RCON: create/start/stop/inspect, whitelist, backups, idle shutdown"
+  - "Transactional backup with save-off → save-all flush → save-on"
+---
+
+import ArchitectureDiagram from '../../components/ArchitectureDiagram.astro';
+import CodeSnippet from '../../components/CodeSnippet.astro';
+import SystemOverview from '../../components/SystemOverview.astro';
+
+## Overview
+
+plaything_v2 is a rewrite of an earlier, "spaghetti" Discord bot (plaything) — the difference is
+architectural. It is a modular Discord bot written in Python 3.13+ that combines Minecraft server
+management, YouTube music playback, text-to-speech, and scheduled automation behind a clean layered design.
+
+The operating principle is **a strict separation of layers**: repositories only run SQL, services own
+business logic, and cogs (features) expose commands to Discord. A dependency-injection container
+(`core/container.py`) composes the entire graph once at startup — nothing is wired by global state.
+
+## Architecture
+
+```
+Discord gateway
+     │
+   Cogs (features)          ← commands, permission checks
+     │
+   Services                 ← business logic, orchestration
+     │
+   Repositories             ← SQL only (data access)
+     │
+   PostgreSQL               ← SQLAlchemy 2.0 + Alembic migrations
+```
+
+<ArchitectureDiagram
+  title="plaything_v2 — layered design"
+  layers={[
+    { label: 'entry', nodes: ['bot/main.py', 'config (pydantic-settings)', 'core/container.py (DI)'] },
+    { label: 'features', nodes: ['Minecraft cogs', 'Music cogs', 'TTS cogs', 'Meal cogs'] },
+    { label: 'services', nodes: ['Minecraft service', 'AudioManager / VoiceManager', 'Scheduler (APScheduler)'] },
+    { label: 'data', nodes: ['repositories (SQL only)', 'SQLAlchemy models', 'PostgreSQL / Alembic'] },
+  ]}
+  caption="Each layer depends only on the layer below it; the DI container wires everything once at startup."
+/>
+
+Lifecycle is an explicit contract:
+
+```
+Bot Started → Bot Ready → Scheduler Start
+Scheduler Shutdown → Bot Close → DB Close
+```
+
+## Persistence & Configuration
+
+- **PostgreSQL + asyncpg + SQLAlchemy 2.0**, with Alembic migrations that also run automatically at bot
+  startup.
+- **pydantic-settings** validates every environment variable at boot — a misconfigured deployment fails
+  fast with a readable error instead of failing at first use.
+
+## Minecraft Server Management
+
+The most involved feature: full lifecycle management of Minecraft servers over RCON.
+
+<CodeSnippet title="command surface — /마크_*" lang="text">
+
+```text
+/마크_생성 <alias> [port]      create a new server (atomic: folder + defaults + DB row)
+/마크_켜 <alias>               start a server
+/마크_꺼 <alias>               stop a server (RCON stop)
+/마크_명령어 <alias> <cmd>     run an RCON command — gated by ops.json, not Discord roles
+/마크_화이트리스트 <alias> ...  manage whitelist
+/마크_맵가져오기 <alias>       register an external map folder as a managed server
+/마크_백업 <alias>             snapshot the world + config into a backup zip
+/마크_상태 <alias>             status / port / folder / players
+```
+
+</CodeSnippet>
+
+### Atomicity and rollback
+
+`/마크_생성` atomically creates the server folder, writes the default files (`server.properties`,
+`eula.txt`, whitelist/ops), and inserts the DB row — and **deletes the folder on failure**. There is no
+half-created server.
+
+### Idle shutdown
+
+Running servers are polled (`list`) on an interval; player counts are recorded in `minecraft_sessions`,
+and an idle timer shuts the server down after `MC_IDLE_SHUTDOWN_SECONDS` with zero players. The timer is
+cancelled the moment a player joins.
+
+### Safe backups
+
+`/마크_백업` snapshots the world (`world/`, `world_nether/`, `world_the_end/`), server config, and plugins
+into a timestamped zip. While the server is running it uses the RCON dance:
+
+```
+save-off → save-all flush → save-on   (then archive)
+```
+
+A failed backup keeps existing archives and always re-enables world saving. Backups older than
+`MC_BACKUP_RETENTION_DAYS` are pruned automatically, with the newest per server always kept. A daily
+scheduler (`MC_BACKUP_HOUR`/`MINUTE`) runs the whole pipeline unattended.
+
+### Map import
+
+`/마크_맵가져오기` registers an existing external map folder: reads the port from its `server.properties`
+(or auto-assigns one), enables RCON/whitelist, and applies every linked Discord↔UUID member to the folder's
+`whitelist.json` / `ops.json`. No upload required — just place the folder on the host.
+
+## Logging Pipeline
+
+Every log goes to three sinks: console, a rotating file, and a Discord channel as embeds. The Discord path
+is the interesting one — a **bounded async queue with a single sequential worker**:
+
+```
+Logger
+   ↓
+Async Queue (bounded, maxsize=200 — drops records when overloaded)
+   ↓
+DiscordLogWorker (order-preserving, batched up to 10 embeds, ≥1s between messages)
+   ↓
+Discord channel embed
+```
+
+- The handler enqueues without blocking the caller.
+- The worker batches embeds to respect rate limits while preserving order via FIFO.
+- Logger-side failures (deleted channel, missing permissions, API timeout) **never kill the bot**.
+
+## Scheduling
+
+APScheduler (async) drives:
+
+- **Daily meal job** — cron at 07:00 Asia/Seoul, fetches the NEIS open API (`&MLSV_YMD=<date>`), parses
+  the response (`INFO-000` success / `INFO-200` no meal), and posts to a channel. Past 18:00 it targets
+  tomorrow's meal. All failures are caught and logged — the bot never crashes.
+- **Heartbeat** — one-minute interval job that logs `Scheduler Alive`.
+- Job failures and misses are emitted as structured error/warning events.
+
+## Resilience
+
+- Every external interaction (HTTP, RCON, FFmpeg, Discord send) is wrapped and logged — failures degrade a
+  feature, not the process.
+- Configuration is env-validated at startup; invalid secrets fail fast.
+- The logging worker is isolated from the request path, so logging infrastructure failure cannot take down
+  the bot.
+- A pytest suite covers the meal pipeline, scheduler registration/execution/exceptions, the logger queue and
+  worker, RCON connection handling, and the music pipeline. Linting via `ruff` and `black`.
+
+## Tech Stack
+
+<SystemOverview
+  title="stack"
+  items={[
+    { label: 'Language', value: 'Python 3.13+ (async-first)' },
+    { label: 'Discord', value: 'discord.py 2.4+ — slash / application commands, auto-synced at startup' },
+    { label: 'Database', value: 'PostgreSQL + asyncpg + SQLAlchemy 2.0 + Alembic' },
+    { label: 'Scheduling', value: 'APScheduler (async)' },
+    { label: 'Config', value: 'pydantic-settings (env-validated)' },
+    { label: 'Audio', value: 'yt-dlp, edge-tts, FFmpeg, PyNaCl' },
+    { label: 'Deploy', value: 'Docker Compose — waits for Postgres health, publishes Minecraft port range, sends logs to journald' },
+  ]}
+/>

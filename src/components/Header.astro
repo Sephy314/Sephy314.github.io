@@ -1,0 +1,40 @@
+---
+const nav = [
+  { href: '/', label: 'index' },
+  { href: '/about/', label: 'about' },
+  { href: '/projects/', label: 'projects' },
+];
+
+const path = Astro.url.pathname;
+---
+
+<header class="sticky top-0 z-50 border-b border-edge bg-ink/85 backdrop-blur">
+  <nav class="mx-auto flex max-w-5xl items-center justify-between gap-4 px-5 py-3.5">
+    <a href="/" class="whitespace-nowrap font-mono text-sm text-bright">
+      <span class="text-accent">sephy@</span>~/<span class="text-mute">workspace</span>
+      <span class="text-accent">$</span>
+    </a>
+
+    <ul class="flex items-center gap-0.5 font-mono text-sm">
+      {nav.map((item) => {
+        const active =
+          path === item.href || (item.href !== '/' && path.startsWith(item.href));
+        return (
+          <li>
+            <a
+              href={item.href}
+              class:list={[
+                'rounded-md px-2.5 py-1.5 transition-colors sm:px-3',
+                active
+                  ? 'bg-panel-2 text-accent'
+                  : 'text-mute hover:bg-panel-2/50 hover:text-bright',
+              ]}
+            >
+              {item.label}
+            </a>
+          </li>
+        );
+      })}
+    </ul>
+  </nav>
+</header>

@@ -1,0 +1,34 @@
+---
+interface Props {
+  title: string;
+  lang?: string;
+}
+
+const { title, lang } = Astro.props;
+---
+
+<figure class="snippet my-6 overflow-hidden rounded-xl border border-edge bg-panel">
+  <figcaption class="flex items-center justify-between gap-3 border-b border-edge bg-panel-2 px-4 py-2 font-mono text-xs">
+    <span class="truncate text-mute">{title}</span>
+    {lang && <span class="shrink-0 uppercase text-accent/70">{lang}</span>}
+  </figcaption>
+  <div class="overflow-x-auto">
+    <slot />
+  </div>
+</figure>
+
+<style>
+  /* Flush the inner Shiki code block against the file-viewer chrome. */
+  .snippet :global(pre.astro-code) {
+    margin: 0;
+    border: 0;
+    border-radius: 0;
+    background: var(--color-panel) !important;
+    padding: 1rem 1.1rem;
+  }
+  .snippet :global(pre.astro-code code) {
+    font-family: var(--font-mono);
+    font-size: 0.82rem;
+    line-height: 1.6;
+  }
+</style>

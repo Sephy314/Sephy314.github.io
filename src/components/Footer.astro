@@ -1,0 +1,38 @@
+---
+const year = new Date().getFullYear();
+
+const links = [
+  { href: 'https://github.com/Sephy314', label: 'github' },
+  { href: 'https://www.linkedin.com/in/davie-ryu/', label: 'linkedin' },
+];
+---
+
+<footer class="border-t border-edge bg-panel/40">
+  <div class="mx-auto max-w-5xl px-5 py-10">
+    <div class="flex flex-col gap-5 font-mono text-xs text-mute sm:flex-row sm:items-center sm:justify-between">
+      <p>
+        <span class="text-accent">sephy@</span>~/<span class="text-mute">portfolio</span>
+        <span class="text-accent">$</span> echo "© {year} Sephy314"
+      </p>
+
+      <ul class="flex items-center gap-5">
+        {links.map((link) => (
+          <li>
+            <a
+              href={link.href}
+              target={link.href.startsWith('http') ? '_blank' : undefined}
+              rel={link.href.startsWith('http') ? 'noreferrer' : undefined}
+              class="transition-colors hover:text-accent"
+            >
+              {link.label} ↗
+            </a>
+          </li>
+        ))}
+      </ul>
+    </div>
+
+    <p class="mt-6 border-t border-edge pt-5 font-mono text-[0.7rem] leading-5 text-mute/70">
+      astro · typescript · tailwind css · mdx — static output on GitHub Pages
+    </p>
+  </div>
+</footer>

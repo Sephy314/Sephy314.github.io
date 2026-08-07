@@ -1,0 +1,21 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+
+<BaseLayout title="404 Not Found" description="The requested page does not exist.">
+  <div class="mx-auto flex max-w-3xl flex-col items-start px-5 py-28">
+    <p class="font-mono text-sm text-accent">
+      <span class="text-mute">sephy@</span>~/workspace<span class="text-accent">$</span>
+    </p>
+    <p class="mt-6 font-mono text-4xl font-semibold text-bright">404 — not found</p>
+    <p class="mt-4 max-w-xl leading-7 text-mute">
+      The requested resource does not exist or has moved. Exit code <code class="text-rose">1</code>.
+    </p>
+    <a
+      href="/"
+      class="mt-8 rounded-lg border border-accent/50 px-4 py-2 font-mono text-sm text-accent transition-colors hover:bg-accent/10"
+    >
+      cd ~/ && ls
+    </a>
+  </div>
+</BaseLayout>

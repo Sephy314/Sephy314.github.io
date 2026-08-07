@@ -1,0 +1,168 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Timeline from '../components/Timeline.astro';
+
+const journey = [
+  {
+    date: '2020',
+    title: 'Started coding',
+    description:
+      'First contact with programming — learning what a program actually does before touching any framework.',
+  },
+  {
+    date: '2022',
+    title: 'Frontend foundations',
+    description:
+      'HTML, CSS, and JavaScript. The fundamentals of building for the web, and the habit of shipping real projects.',
+  },
+  {
+    date: '2023',
+    title: 'Web frameworks',
+    description:
+      'React and Express — the first real application structure: components, state, routing, and HTTP servers.',
+  },
+  {
+    date: '2024',
+    title: 'Backend fundamentals',
+    description:
+      'Django and SQL. Data modeling, ORM, and relational databases — the first serious backend work.',
+  },
+  {
+    date: '2025',
+    title: 'Async backend on the JVM',
+    description:
+      'Kotlin, PostgreSQL, Redis, and Spring Boot WebFlux with coroutines — reactive, non-blocking backend design.',
+  },
+  {
+    date: '2026',
+    title: 'Go + open development',
+    description:
+      'Started Go and shifted to publishing work publicly on GitHub with an active git workflow. From here the projects tell the story — CNPS (protocol design), Chinwag (microservices + security), patchnote (CLI tooling), plaything_v2 (layered automation).',
+  },
+];
+
+const interests = [
+  {
+    title: 'Secure authentication systems',
+    body: 'Sender-constrained tokens, DPoP, JWKS, key rotation, and replay prevention — the mechanics of proving identity in distributed systems.',
+  },
+  {
+    title: 'Distributed architecture',
+    body: 'Command/query separation, event-driven communication, the outbox pattern, and service boundaries that actually isolate change.',
+  },
+  {
+    title: 'Network protocols',
+    body: 'Framing, message models, streaming, and the trade-offs that decide when to build a protocol and when to reuse one.',
+  },
+  {
+    title: 'Cloud infrastructure',
+    body: 'Reproducible deployment: k3s manifests, Docker, and the operations reality of running several services on one cluster.',
+  },
+  {
+    title: 'Reliability engineering',
+    body: 'Idempotency, fault tolerance, graceful degradation, and making eventual consistency explicit instead of pretending it is not there.',
+  },
+];
+---
+
+<BaseLayout title="About" description="Development journey, engineering interests, and technical philosophy.">
+  <div class="mx-auto max-w-3xl px-5 py-14">
+    <p class="font-mono text-xs text-mute">~/about</p>
+    <h1 class="mt-4 font-mono text-3xl font-semibold text-bright">About</h1>
+
+    <!-- ── Intro ─────────────────────────────────────── -->
+    <section class="mt-10">
+      <h2 class="font-mono text-sm uppercase tracking-wider text-accent">// who I am</h2>
+      <div class="doc mt-4">
+        <p>
+          I'm a student developer from Korea focused on backend engineering and distributed systems. I've
+          been writing code since 2020, moved into systems-level backend work in 2026, and I'm a Go
+          enthusiast by preference.
+        </p>
+        <p>
+          My work sits at the intersection of <strong>security, distributed architecture, and
+          infrastructure</strong> — the parts of a system that are invisible until they break. I care less
+          about which stack is fashionable and more about whether the design decisions are explicit,
+          documented, and defensible.
+        </p>
+        <p>
+          I publish everything I build publicly, and I write about the engineering decisions behind it —
+          the trade-offs, not just the happy path.
+        </p>
+      </div>
+    </section>
+
+    <!-- ── Journey ───────────────────────────────────── -->
+    <section class="mt-16">
+      <h2 class="font-mono text-sm uppercase tracking-wider text-accent">// development journey</h2>
+      <div class="mt-8">
+        <Timeline items={journey} />
+      </div>
+    </section>
+
+    <!-- ── Interests ─────────────────────────────────── -->
+    <section class="mt-16">
+      <h2 class="font-mono text-sm uppercase tracking-wider text-accent">// engineering interests</h2>
+      <div class="mt-6 grid gap-4 sm:grid-cols-2">
+        {interests.map((item) => (
+          <div class="rounded-xl border border-edge bg-panel p-5">
+            <h3 class="font-mono text-sm font-semibold text-bright">{item.title}</h3>
+            <p class="mt-2 text-sm leading-6 text-mute">{item.body}</p>
+          </div>
+        ))}
+      </div>
+    </section>
+
+    <!-- ── Philosophy ────────────────────────────────── -->
+    <section class="mt-16">
+      <h2 class="font-mono text-sm uppercase tracking-wider text-accent">// technical philosophy</h2>
+      <div class="doc mt-4">
+        <ul>
+          <li>
+            <strong>Simplicity over cleverness.</strong> A boring, correct solution beats an impressive,
+            fragile one. The outbox pattern is "boring" — that is why it works.
+          </li>
+          <li>
+            <strong>Security is a boundary, not a feature.</strong> Authentication deserves its own service
+            and its own blast radius, not a middleware bolted onto whichever service needed it first.
+          </li>
+          <li>
+            <strong>Trade-offs must be explicit.</strong> Eventual consistency, a gateway as a single point
+            of entry, a custom protocol — every decision has a cost, and the design should say what it is.
+          </li>
+          <li>
+            <strong>Reliability is designed, not tested in.</strong> Idempotency, graceful degradation, and
+            failure isolation come from architecture, not from hoping.
+          </li>
+          <li>
+            <strong>Document the decisions.</strong> A README that explains why a system is shaped the way
+            it is saves the next engineer — including future me — weeks.
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ── Links ─────────────────────────────────────── -->
+    <section class="mt-16 rounded-xl border border-edge bg-panel p-6">
+      <h2 class="font-mono text-sm uppercase tracking-wider text-accent">// elsewhere</h2>
+      <div class="mt-4 flex flex-wrap gap-3 font-mono text-sm">
+        <a
+          href="https://github.com/Sephy314"
+          target="_blank"
+          rel="noreferrer"
+          class="rounded-lg border border-edge-2 px-4 py-2 text-mute transition-colors hover:border-accent/50 hover:text-accent"
+        >
+          github.com/Sephy314 ↗
+        </a>
+        <a
+          href="https://www.linkedin.com/in/davie-ryu/"
+          target="_blank"
+          rel="noreferrer"
+          class="rounded-lg border border-edge-2 px-4 py-2 text-mute transition-colors hover:border-accent/50 hover:text-accent"
+        >
+          linkedin ↗
+        </a>
+      </div>
+    </section>
+  </div>
+</BaseLayout>

@@ -1,0 +1,37 @@
+---
+import BaseLayout from './BaseLayout.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  backHref?: string;
+  backLabel?: string;
+}
+
+const {
+  title,
+  description,
+  backHref = '/projects/',
+  backLabel = 'projects',
+} = Astro.props;
+---
+
+<BaseLayout title={title} description={description} ogType="article">
+  <article class="mx-auto w-full max-w-3xl px-5 py-14">
+    <a
+      href={backHref}
+      class="font-mono text-xs text-mute transition-colors hover:text-accent"
+    >
+      ← back to {backLabel}
+    </a>
+
+    <header class="mb-10 mt-6">
+      <h1 class="font-mono text-3xl font-semibold leading-tight text-bright">{title}</h1>
+      <p class="mt-4 leading-7 text-mute">{description}</p>
+    </header>
+
+    <div class="doc">
+      <slot />
+    </div>
+  </article>
+</BaseLayout>

@@ -1,0 +1,30 @@
+---
+interface Item {
+  label: string;
+  value: string;
+}
+
+interface Props {
+  title?: string;
+  items: Item[];
+}
+
+const { title, items } = Astro.props;
+---
+
+<div class="my-6 overflow-hidden rounded-xl border border-edge bg-panel">
+  {title && (
+    <div class="border-b border-edge bg-panel-2 px-4 py-2 font-mono text-xs text-mute">
+      {title}
+    </div>
+  )}
+
+  <dl class="divide-y divide-edge">
+    {items.map(({ label, value }) => (
+      <div class="grid grid-cols-[9rem_1fr] gap-4 px-4 py-2.5 sm:grid-cols-[12rem_1fr]">
+        <dt class="font-mono text-[0.72rem] leading-6 text-mute">{label}</dt>
+        <dd class="min-w-0 text-[0.82rem] leading-6 text-text">{value}</dd>
+      </div>
+    ))}
+  </dl>
+</div>

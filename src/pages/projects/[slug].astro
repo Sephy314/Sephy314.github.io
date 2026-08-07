@@ -1,0 +1,65 @@
+---
+import { getCollection, render } from 'astro:content';
+import DocLayout from '../../layouts/DocLayout.astro';
+import TechBadge from '../../components/TechBadge.astro';
+
+export async function getStaticPaths() {
+  const projects = await getCollection('projects');
+  return projects.map((project) => ({
+    params: { slug: project.slug },
+    props: { project },
+  }));
+}
+
+const { project } = Astro.props;
+const { Content } = await render(project);
+const {
+  title,
+  description,
+  category,
+  status,
+  languages,
+  tech,
+  repo,
+  started,
+  updated,
+} = project.data;
+---
+
+<DocLayout title={title} description={description} backHref="/projects/" backLabel="all projects">
+  <!-- ── Meta strip ─────────────────────────────────── -->
+  <div class="mb-8 flex flex-wrap items-center gap-x-5 gap-y-2 border-y border-edge bg-panel px-4 py-3 font-mono text-[0.75rem] text-mute">
+    <span class="flex items-center gap-1.5">
+      <span
+        class:list={[
+          'size-1.5 rounded-full',
+          status === 'active' ? 'bg-accent' : 'bg-mute',
+        ]}
+      ></span>
+      {status}
+    </span>
+    <span>{category}</span>
+    <span>
+      {started} → {updated}
+    </span>
+    <a
+      href={repo}
+      target="_blank"
+      rel="noreferrer"
+      class="text-accent transition-colors hover:text-accent-strong"
+    >
+      source ↗
+    </a>
+  </div>
+
+  <div class="mb-10 flex flex-wrap gap-1.5">
+    {languages.map((lang) => (
+      <TechBadge name={lang} variant="accent" />
+    ))}
+    {tech.map((t) => (
+      <TechBadge name={t} />
+    ))}
+  </div>
+
+  <Content />
+</DocLayout>

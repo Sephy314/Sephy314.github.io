@@ -1,0 +1,193 @@
+---
+title: "CNPS"
+tagline: "A lightweight TCP-native protocol system designed for controlled communication between services."
+description: "Command Network Protocol Stream — a command-oriented application protocol built on persistent TCP connections and NDJSON framing, designed for CLI tools, AI agents, and stream-native services."
+category: "Network Protocols"
+status: "active"
+featured: true
+order: 2
+languages: ["Go"]
+tech: ["TCP", "NDJSON", "Go", "Middleware"]
+repo: "https://github.com/Sephy314/CNPS"
+started: "2026-05"
+updated: "2026-06"
+highlights:
+  - "Command-oriented semantics instead of resource-oriented HTTP-style verbs"
+  - "NDJSON framing over persistent TCP connections"
+  - "Bidirectional streaming on a single connection"
+  - "Middleware pipeline: logging, auth, recovery, metrics, tracing"
+---
+
+import ArchitectureDiagram from '../../components/ArchitectureDiagram.astro';
+import CodeSnippet from '../../components/CodeSnippet.astro';
+import SystemOverview from '../../components/SystemOverview.astro';
+
+## Overview
+
+CNPS (**C**ommand **N**etwork **P**rotocol **S**tream) is a command-oriented application-layer protocol
+built on persistent TCP connections and NDJSON framing. It is designed for CLI applications, AI agents,
+real-time systems, and lightweight services that need a simple, stream-native communication model — the
+kind of thing that is awkward over HTTP request/response.
+
+The core shift is philosophical: **CNPS focuses on commands instead of resources.** Where REST models
+`POST /user` and RPC models `CreateUser()`, CNPS models an intent:
+
+<CodeSnippet title="command over resource — the core idea" lang="json">
+
+```json
+{
+  "to": "chat.app",
+  "cmd": ".user",
+  "act": "@MAK",
+  "info": {},
+  "payload": {
+    "name": "sephy"
+  }
+}
+```
+
+</CodeSnippet>
+
+Intent is explicit and consistent across systems, which is what makes it CLI- and agent-friendly.
+
+## Why TCP and NDJSON
+
+Two design decisions dominate the protocol: a persistent TCP connection and newline-delimited JSON
+messages. Both are deliberate.
+
+<SystemOverview
+  title="protocol decisions"
+  items={[
+    { label: 'Persistent TCP', value: 'One long-lived connection carries many messages. No per-message handshake, no connection churn — which matters for chat, streaming events, and control planes. TCP guarantees ordered, reliable delivery of the byte stream.' },
+    { label: 'NDJSON framing', value: 'Each message is one JSON object terminated by a newline. Framing is trivial to implement correctly in any language, messages are human-readable on the wire, and backpressure is a natural property of a byte stream.' },
+    { label: 'Bidirectional streaming', value: 'Both peers can push messages on the same connection at any time — request/response and server→client events coexist without multiplexing machinery.' },
+    { label: 'Command tree', value: 'A dot-delimited hierarchy (.user, .user.profile, .chat.message) gives namespaces for routing and discoverability without a registry.' },
+  ]}
+/>
+
+## Protocol Architecture
+
+```
+Application
+     │
+ Middleware
+     │
+   Router
+     │
+    CNPS
+     │
+ Persistent TCP
+```
+
+- **Router** — dispatches commands (`router.Handle(".user", HandleUser)`).
+- **Middleware** — cross-cutting concerns (logging, authentication, recovery, metrics, rate limiting,
+  tracing) composed around the router.
+- **CNPS core** — framing, status codes, and connection management.
+
+## Message Format
+
+Every message is a single NDJSON line. Requests and responses share the same shape, which keeps a request
+traceable to its response.
+
+<CodeSnippet title="request" lang="json">
+
+```json
+{
+  "to": "chat.app",
+  "cmd": ".message",
+  "act": "@MAK",
+  "info": {},
+  "payload": {
+    "content": "Hello"
+  }
+}
+```
+
+</CodeSnippet>
+
+<CodeSnippet title="response" lang="json">
+
+```json
+{
+  "status": 10,
+  "info": {},
+  "payload": {
+    "message": "OK"
+  }
+}
+```
+
+</CodeSnippet>
+
+| Field | Purpose |
+| --- | --- |
+| `to` | Target application / capability |
+| `cmd` | Command (capability) being invoked |
+| `act` | Action type (the CRUD verb) |
+| `info` | Metadata / headers |
+| `payload` | Data body |
+
+Actions map onto a CRUD model with compact, unambiguous tokens:
+
+| Action | Meaning |
+| --- | --- |
+| `@QRY` | Query / Read |
+| `@MAK` | Create |
+| `@UDT` | Update |
+| `@RMV` | Delete |
+
+Status codes are namespaced so clients can branch on the top digit:
+
+<CodeSnippet title="status code space" lang="text">
+
+```text
+10            OK                       (success)
+20, 21        Accepted / Processing    (processing)
+30–38         Client Error             (bad request, not authorised,
+                                       expired token, forbidden,
+                                       duplicated, conflict, rate limit,
+                                       not found)
+40            Internal Server Error
+```
+
+</CodeSnippet>
+
+## Message Flow
+
+A single connection supports both request/response and streaming events:
+
+<ArchitectureDiagram
+  title="CNPS — packet / message flow"
+  layers={[
+    { label: 'client', nodes: ['Request: { cmd: ".chat.message", act: "@MAK" }'] },
+    { label: 'server', nodes: ['Response: { status: 10 }', 'Event: new message', 'Event: new message', 'Event: new message'] },
+  ]}
+  caption="Request/response plus continuous server-pushed events over one persistent TCP connection."
+/>
+
+## Design Goals
+
+- **Simplicity over complexity** — a protocol that can be implemented from a README.
+- **Stream-first communication** — push is a first-class citizen, not an afterthought.
+- **Human-readable protocol** — debuggable with `nc` or a text editor.
+- **Middleware extensibility** — cross-cutting concerns without touching handlers.
+- **AI-friendly structure** — a single JSON object a model can produce and parse.
+- **High-performance TCP communication** — no HTTP overhead, minimal framing cost.
+
+## Non-Goals
+
+CNPS is explicitly **not**:
+
+- A replacement for HTTP (it does not aim to serve the web).
+- A message broker (it does not route between many producers/consumers).
+- A service mesh (it does not do transport-level control plane work).
+- A binary protocol (readability is a feature, not a cost).
+
+It is an application-layer protocol over TCP, and it stays in that lane.
+
+## Use Cases
+
+- **CLI** — `cnps call app .user @QRY` gives a scriptable, grep-able interface.
+- **AI agents** — a model emits a JSON command object directly.
+- **Real-time systems** — chat, multiplayer, event streaming, notifications.
+- **Internal systems** — microservices, workers, control planes, internal APIs.

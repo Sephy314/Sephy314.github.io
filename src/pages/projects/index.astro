@@ -1,0 +1,72 @@
+---
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ProjectCard from '../../components/ProjectCard.astro';
+import TechBadge from '../../components/TechBadge.astro';
+import { getCollection } from 'astro:content';
+
+const projects = (await getCollection('projects')).sort(
+  (a, b) => a.data.order - b.data.order
+);
+const primary = projects.filter((p) => !p.data.side);
+const side = projects.filter((p) => p.data.side);
+---
+
+<BaseLayout
+  title="Projects"
+  description="Selected engineering work — distributed systems, security, network protocols, and infrastructure."
+>
+  <div class="mx-auto max-w-5xl px-5 py-14">
+    <p class="font-mono text-xs text-mute">~/projects</p>
+    <h1 class="mt-4 font-mono text-3xl font-semibold text-bright">Projects</h1>
+    <p class="mt-4 max-w-2xl leading-7 text-mute">
+      Selected engineering work from <span class="text-text">github.com/Sephy314</span>. Each project page
+      documents the architecture, the design decisions, and the trade-offs — not just what was built, but
+      why it is shaped the way it is.
+    </p>
+
+    <h2 class="mt-12 font-mono text-sm uppercase tracking-wider text-mute">
+      <span class="text-accent">//</span> Primary
+    </h2>
+    <div class="mt-6 grid gap-4 sm:grid-cols-2">
+      {primary.map((project) => (
+        <ProjectCard project={project} />
+      ))}
+    </div>
+
+    {side.length > 0 && (
+      <div class="mt-16">
+        <h2 class="font-mono text-sm uppercase tracking-wider text-mute">
+          <span class="text-accent">//</span> Side projects
+        </h2>
+        <div class="mt-6 divide-y divide-edge overflow-hidden rounded-xl border border-edge bg-panel">
+          {side.map((project) => (
+            <div class="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div class="min-w-0">
+                <a
+                  href={`/projects/${project.slug}/`}
+                  class="font-mono text-sm font-semibold text-bright transition-colors hover:text-accent"
+                >
+                  {project.data.title}
+                </a>
+                <p class="mt-1 text-sm leading-6 text-mute">{project.data.tagline}</p>
+                <div class="mt-2.5 flex flex-wrap gap-1.5">
+                  {project.data.languages.map((lang) => (
+                    <TechBadge name={lang} variant="accent" />
+                  ))}
+                </div>
+              </div>
+              <a
+                href={project.data.repo}
+                target="_blank"
+                rel="noreferrer"
+                class="shrink-0 font-mono text-xs text-mute transition-colors hover:text-accent"
+              >
+                ↗ source
+              </a>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+  </div>
+</BaseLayout>

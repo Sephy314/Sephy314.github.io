@@ -1,0 +1,112 @@
+---
+title: "patchnote"
+tagline: "An AI-powered Git assistant that generates commit messages, PR descriptions, and code reviews from real repository changes."
+description: "Go CLI that reads your staged/unstaged diff, generates a Conventional Commit message, PR description, or structured code review via a pluggable AI client, and writes results back with an interactive terminal workflow."
+category: "Developer Tooling"
+status: "active"
+featured: false
+order: 3
+languages: ["Go"]
+tech: ["Go", "Cobra", "Viper", "Groq API", "LLM"]
+repo: "https://github.com/Sephy314/patchnote"
+started: "2026-07"
+updated: "2026-07"
+highlights:
+  - "Single binary, gitignore-aware diff extraction"
+  - "Pluggable AI provider interface (Groq / llama-3.3-70b-versatile)"
+  - "Interactive terminal workflow: commit, edit, copy, or cancel"
+  - "Conventional Commit output with structured PR/review templates"
+---
+
+import CodeSnippet from '../../components/CodeSnippet.astro';
+import SystemOverview from '../../components/SystemOverview.astro';
+
+## Overview
+
+patchnote is a CLI that turns a `git diff` into useful artifacts. Instead of forcing a commit-message
+convention by hand, it analyzes staged and unstaged changes and generates:
+
+- **Commit messages** — Conventional Commit format with a title and body.
+- **PR descriptions** — Markdown with summary, motivation, main changes, testing notes, breaking changes,
+  and a checklist.
+- **Code reviews** — structured output covering summary, positive observations, potential bugs, security,
+  and performance.
+
+It is gitignore-aware — ignored files are filtered out of the diff before anything is sent to the model —
+and produces output in any language via configuration.
+
+## Workflow
+
+```bash
+# 1. Register a Groq API key once
+patchnote register
+
+# 2. Stage your changes
+git add .
+
+# 3. Generate a commit message (or just `patchnote`)
+patchnote commit
+```
+
+The result is presented interactively: commit it, edit it, copy it to the clipboard, or cancel. Nothing is
+written to your repository without your confirmation.
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `patchnote` | Generate a commit message (default flow) |
+| `patchnote commit` | Generate and create a commit |
+| `patchnote pr` | Generate a Markdown PR description |
+| `patchnote review` | Generate a structured code review |
+| `patchnote register` | Register and verify a Groq API key |
+
+## Architecture
+
+The codebase is deliberately separated so the AI backend is swappable and everything else is testable in
+isolation:
+
+<SystemOverview
+  title="internal layout"
+  items={[
+    { label: 'cmd/', value: 'Cobra command tree: root, commit, pr, review, register, clipboard (cross-platform).' },
+    { label: 'internal/ai', value: 'Client interface + Groq implementation. The interface is the seam for future providers.' },
+    { label: 'internal/config', value: 'Viper-backed config at ~/.config/patchnote/config.yaml (provider, model, temperature, language, api_key).' },
+    { label: 'internal/git', value: 'Git operations — diff extraction, gitignore-aware file filtering, staging.' },
+    { label: 'internal/prompts', value: 'Prompt construction per artifact type (commit / PR / review).' },
+    { label: 'internal/ui', value: 'Terminal UI helpers for the interactive workflow.' },
+  ]}
+/>
+
+## Configuration
+
+```yaml
+# ~/.config/patchnote/config.yaml
+provider: groq
+model: llama-3.3-70b-versatile
+temperature: 0.2
+language: english
+api_key: ""
+```
+
+Low temperature is deliberate — generation determinism matters more than creativity for commit messages.
+The API key is stored locally in the config file, never in the repository.
+
+## Design Decisions
+
+| Decision | Rationale |
+| --- | --- |
+| Read the diff, not the whole tree | Cost, latency, and relevance. The model sees exactly what changed. |
+| Pluggable AI interface | The provider is an interface (`internal/ai/client.go`); swapping Groq for another backend is a new implementation, not a rewrite. |
+| Interactive by default | An agent that auto-commits is dangerous. The tool proposes; the developer disposes. |
+| Conventional Commit output | Machine-parseable history that flows directly into changelogs and PR tooling. |
+| Cross-platform clipboard | The generated message should land wherever you paste PR descriptions, on any OS. |
+
+## Lessons Learned
+
+- Prompt construction is the real product. The same model with a well-scoped prompt (diff only, explicit
+  template, temperature 0.2) produces dramatically better output than a generic "write a commit message".
+- Keeping the AI client behind an interface meant the CLI, config, and prompts could be developed and
+  tested without a network call — the entire pipeline runs against a fake client in tests.
+- Config in `~/.config` (XDG) is the right call for a developer tool: version-controlled, inspectable, and
+  shared across machines without touching the repo.
