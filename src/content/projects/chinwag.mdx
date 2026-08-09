@@ -1,13 +1,13 @@
 ---
 title: "Chinwag"
 tagline: "A secure distributed communication platform designed with modern authentication and scalable backend architecture."
-description: "Real-time streaming chat service built as a small microservice architecture — Go (Echo) + Next.js, DPoP (RFC 9449) authentication, and CQRS reconciled over NATS JetStream."
+description: "Real-time streaming chat service running live at chinwag.duckdns.org — Go (Echo v5) + Next.js 16, DPoP (RFC 9449) authentication, and CQRS reconciled over NATS JetStream."
 category: "Distributed Systems / Security"
 status: "active"
 featured: true
 order: 1
 languages: ["Go"]
-tech: ["Echo", "Next.js", "NATS JetStream", "Redis", "PostgreSQL", "k3s", "DPoP", "JWKS", "CQRS", "GitHub Actions"]
+tech: ["Echo", "Next.js", "NATS JetStream", "Redis", "PostgreSQL", "k3s", "cert-manager", "DPoP", "JWKS", "CQRS", "GitHub Actions"]
 repo: "https://github.com/Sephy314/Chinwag"
 started: "2026-06"
 updated: "2026-08"
@@ -25,12 +25,14 @@ import SystemOverview from '../../components/SystemOverview.astro';
 
 ## Overview
 
-Chinwag is a real-time streaming chat service built on a small microservice architecture. It is not a
-demo wrapper around a chat SDK — the interesting parts are the ones that are usually hidden: how a token
-proves it is being used by the entity it was issued to, how a write eventually becomes a consistent read,
-and how five services stay deployable on a single-node k3s cluster.
+Chinwag is a real-time streaming chat service built on a small microservice architecture, **running live
+at https://chinwag.duckdns.org**. It is not a demo wrapper around a chat SDK — the interesting parts are
+the ones that are usually hidden: how a token proves it is being used by the entity it was issued to, how
+a write eventually becomes a consistent read, and how five services stay deployable on a single-node k3s
+cluster.
 
-Backend in Go (Echo v5), frontend in Next.js (React 19). Communication between services is event-driven
+Backend in Go 1.26+ (Echo v5), frontend in Next.js 16 (React 19). Communication between services is
+event-driven
 over NATS JetStream, and the whole stack ships with a pure-manifest Kubernetes deployment.
 
 ## System Layout
@@ -92,8 +94,8 @@ the damage from a stolen token.
 ### WebSocket tickets
 
 WebSocket URLs can leak into logs and proxies, so access tokens are never placed in the query string. The
-client first authenticates with DPoP to a `/ws-ticket` endpoint and receives a **single-use ticket**, which
-is consumed atomically at connection upgrade. Connections run heartbeats (ping/pong) and an exponential
+client first authenticates with DPoP to a `/ws-ticket` endpoint and receives a **single-use ticket** (TTL
+30s), which is consumed atomically at connection upgrade. Connections run heartbeats (ping/pong) and an exponential
 backoff reconnection policy.
 
 ## CQRS & Event-Driven Architecture
@@ -123,9 +125,10 @@ POST /chat/rooms/{id}/messages
 </CodeSnippet>
 
 - **Command** — a write persists the message and an outbox event (`message_created` / `updated` / `deleted`)
-  in the *same transaction*. The outbox publisher forwards to NATS, and the WebSocket hub broadcasts in real
-  time. The outbox pattern means the DB and the event stream can never drift apart: no two-phase commit
-  across a database and a broker.
+  in the *same transaction*. The outbox publisher polls pending rows (100ms interval, batch of 50) and
+  forwards them to NATS with **exponential backoff retries (max 30s)** on failure, while the WebSocket hub
+  broadcasts in real time. The outbox pattern means the DB and the event stream can never drift apart: no
+  two-phase commit across a database and a broker.
 - **Query** — the `chat-projection` NATS consumer builds a projection table, which reads hit Redis
   (`chat:*`) with **cursor-based pagination**. Reads are cheap and never contend with writes.
 - **Fault tolerance** — if a consumer or a service is down, JetStream retains the stream; on recovery the
@@ -139,8 +142,8 @@ POST /chat/rooms/{id}/messages
   items={[
     { label: 'PostgreSQL', value: 'Single StatefulSet holding four schemas — chinwag_auth, chinwag_room, chinwag_chat, chinwag_chat_projection. Per-service schemas keep ownership explicit without multiplying clusters.' },
     { label: 'Redis (AOF)', value: 'Refresh tokens, DPoP nonce/jti, WS tickets, read caching, distributed locks. AOF persistence survives restarts; Lua scripts provide atomic replay checks.' },
-    { label: 'NATS JetStream', value: 'CHAT_EVENTS event stream created automatically by the chat-command service. Backbone of outbox publishing and CQRS consumption.' },
-    { label: 'Traefik Ingress', value: 'Routes /auth, /rooms, /users, /chat to the gateway (incl. WebSocket upgrade) and / to the frontend.' },
+    { label: 'NATS JetStream', value: 'CHAT_EVENTS event stream created automatically by the chat-command service, on subjects chat.room.> / chat.system. Backbone of outbox publishing and CQRS consumption.' },
+    { label: 'Traefik Ingress', value: 'Routes /auth, /rooms, /users, /chat to the gateway (incl. WebSocket upgrade) and / to the frontend. Terminates HTTPS — Let\'s Encrypt via the duckdns DNS-01 webhook, auto-renewed by cert-manager.' },
   ]}
 />
 
@@ -183,9 +186,9 @@ POST /chat/rooms/{id}/messages
 
 ## Deployment
 
-The project ships a Dockerfile per component (a parameterized multi-stage builder with
-`--build-arg SERVICE=...`) and `infra/k3s/` with the full manifest set: Namespace, ConfigMap, Secret,
-Postgres/Redis/NATS, all Deployments + Services, and a Traefik Ingress.
+Chinwag runs live at **https://chinwag.duckdns.org**. The project ships a Dockerfile per component (a
+parameterized multi-stage builder with `--build-arg SERVICE=...`) and `infra/k3s/` with the full manifest
+set: Namespace, ConfigMap, Secret, Postgres/Redis/NATS, all Deployments + Services, and a Traefik Ingress.
 
 ```bash
 cd infra/k3s
@@ -195,8 +198,10 @@ kubectl -n chinwag get pods
 curl -s http://chinwag.local/health
 ```
 
-Secrets (DB/Redis passwords, optional Google OAuth) live in `infra/k3s/secret.yaml` and must be rotated
-before any non-local deployment.
+HTTPS is handled by **cert-manager**: Let's Encrypt certificates are issued via the duckdns **DNS-01
+webhook** (for environments where HTTP-01 is not possible) and auto-renewed in-cluster. Secrets (DB/Redis
+passwords, optional Google OAuth) live in `infra/k3s/secret.yaml` and must be rotated before any non-local
+deployment.
 
 ## CI/CD (GitHub Actions)
 
