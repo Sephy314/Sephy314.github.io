@@ -8,7 +8,7 @@ featured: false
 side: true
 order: 4
 languages: ["Python"]
-tech: ["Python 3.13", "discord.py", "SQLAlchemy 2.0", "Alembic", "PostgreSQL", "APScheduler", "RCON", "Docker"]
+tech: ["Python 3.13", "discord.py", "SQLAlchemy 2.0", "Alembic", "PostgreSQL", "APScheduler", "RCON", "Docker", "GitHub Actions"]
 repo: "https://github.com/Sephy314/plaything_v2"
 started: "2026-08"
 updated: "2026-08"
@@ -160,6 +160,17 @@ APScheduler (async) drives:
   the bot.
 - A pytest suite covers the meal pipeline, scheduler registration/execution/exceptions, the logger queue and
   worker, RCON connection handling, and the music pipeline. Linting via `ruff` and `black`.
+
+## CI (GitHub Actions)
+
+CI runs on GitHub Actions on every push and pull request — two workflows, and nothing more:
+
+- `.github/workflows/test.yml` — spins up a **PostgreSQL service container**, applies the Alembic
+  migrations, then runs the full pytest suite (unit + integration + e2e) with coverage.
+- `.github/workflows/lint.yml` — `ruff check .` and `black --check .`.
+
+Deployment is deliberately **not** automated: there is no CD workflow. The bot ships manually via
+`docker compose up -d --build`, so a bad merge can never reach production on its own.
 
 ## Tech Stack
 

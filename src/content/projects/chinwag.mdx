@@ -7,7 +7,7 @@ status: "active"
 featured: true
 order: 1
 languages: ["Go"]
-tech: ["Echo", "Next.js", "NATS JetStream", "Redis", "PostgreSQL", "k3s", "DPoP", "JWKS", "CQRS"]
+tech: ["Echo", "Next.js", "NATS JetStream", "Redis", "PostgreSQL", "k3s", "DPoP", "JWKS", "CQRS", "GitHub Actions"]
 repo: "https://github.com/Sephy314/Chinwag"
 started: "2026-06"
 updated: "2026-08"
@@ -197,6 +197,20 @@ curl -s http://chinwag.local/health
 
 Secrets (DB/Redis passwords, optional Google OAuth) live in `infra/k3s/secret.yaml` and must be rotated
 before any non-local deployment.
+
+## CI/CD (GitHub Actions)
+
+The whole pipeline runs on GitHub Actions — every PR is gated before merge, and every `main` merge ships
+itself.
+
+| Workflow | Trigger | What it does |
+| --- | --- | --- |
+| `ci.yml` | push (any branch), pull_request | Backend: `make test` + `make vet` across the Go workspace · Frontend: `npm ci` → `npm test` → `npm run lint` → `npm run build` |
+| `cd.yml` | push to `main`, manual (`workflow_dispatch`) | A **self-hosted runner on the k3s node** syncs the checkout to `origin/main` and runs `infra/k3s/update.sh` natively — rebuild → import → apply → rollout restart → verify |
+
+CD is deliberately credential-free: the runner lives on the k3s node itself, so docker, k3s, and kubectl
+are already local. There is no inbound SSH, no repo secrets, and no image registry to push to — `main` is
+the only thing that ever reaches the cluster.
 
 <blockquote>
 Chinwag demonstrates the full arc of a production-shaped system: sender-constrained authentication,
