@@ -1,0 +1,131 @@
+---
+title: "Cachey"
+tagline: "A distributed key-value cache store built from scratch in Go — Raft consensus, WAL-backed durability, and a sharded-cluster roadmap."
+description: "A distributed key-value cache written in Go. A from-scratch Raft consensus engine — leader election, log replication, dynamic membership, linearizable reads, snapshots — turns a plain in-memory store into a replicated, crash-safe cluster."
+category: "Distributed Systems / Storage"
+status: "active"
+featured: false
+side: false
+order: 2
+languages: ["Go"]
+tech: ["Raft", "WAL", "TCP", "NDJSON", "Go"]
+repo: "https://github.com/Sephy314/Cachey"
+started: "2026-08"
+updated: "2026-09"
+highlights:
+  - "Raft consensus engine built and tested end to end — election, replication, dynamic membership, linearizable reads, snapshots"
+  - "WAL-backed durability with crash recovery, rotation, and an atomic snapshot/replace contract"
+  - "NDJSON TCP protocol with leader-redirect hints so clients follow the current leader"
+  - "End-to-end cluster tests: failover, partitions, restart recovery, snapshot restore"
+---
+
+import ArchitectureDiagram from '../../components/ArchitectureDiagram.astro';
+
+## Overview
+
+Cachey is a distributed key-value cache store in Go. It starts from one question — **how does a single
+node become a cluster?** The answer is Raft, implemented from scratch rather than pulled in as a library:
+writes go through a leader, are durably logged, and are applied to every replica the moment they commit,
+and reads stay linearizable through the read-index protocol.
+
+The honest status: the runnable `cacheyd` binary still starts a single node today, while the consensus
+engine behind cluster mode is complete and covered by end-to-end tests. Wiring the binary into a real
+multi-node cluster is the immediate next step, and sharding keys across those clusters comes after.
+
+## Why build consensus from scratch
+
+Reaching for `etcd/raft` would have made the replication correct on day one, but it would have left the
+interesting part unexplored: *why* the log has to be written before the state machine runs, why elections
+randomize timeouts, why a stale leader must lose, and what a snapshot is actually for. Cachey is built one
+primitive at a time — leader election, then log replication, then durability, then membership, then
+compaction — with each layer tested before the next exists. That order is the point of the project.
+
+## Architecture
+
+Two things share one codebase: the single-node path that `cacheyd` runs today, and the replicated store
+library that is fully tested.
+
+<ArchitectureDiagram
+  title="Cachey — single node (cacheyd, today)"
+  layers={[
+    { label: 'client', nodes: ['TCP / NDJSON client (pkg/client)'] },
+    { label: 'server', nodes: ['Handler — GET / PUT / DEL / TTL dispatch'] },
+    { label: 'store', nodes: ['In-memory map (CacheyStore)'] },
+    { label: 'durability', nodes: ['WAL — active + temporary log, snapshots, rotation'] },
+  ]}
+  caption="Mutations are acknowledged only after the WAL makes them durable; a background manager seals and rotates the log."
+/>
+
+In cluster mode the same handler writes through a `ClusterStore`: every mutation is proposed to the raft
+leader, replicated to a quorum of followers, durably logged, and only then applied to each node's state
+machine (FSM).
+
+```
+Client ──▶ Handler ──▶ ClusterStore
+                          │
+                      Raft Node ── election + log replication ──▶ peers
+                          │
+                   WAL (durable log) ──▶ FSM (CacheyStore)
+                          │
+                   snapshots / compaction
+```
+
+### Package layout
+
+| Package | Responsibility |
+| --- | --- |
+| `internal/protocol` | Command model and JSON parsing |
+| `internal/raft` | Consensus core — election, replication, membership, read index, snapshots |
+| `internal/server` | TCP dispatch; `ClusterStore` adapts a raft node to `store.Store` |
+| `internal/store` | Storage interface, in-memory store, and raft FSM |
+| `internal/wal` | Durable log backend for both the store and the raft log |
+| `pkg/client` | TCP client that follows leader-redirect hints |
+| `cmd/cacheyd` | Single-node binary: `cacheyd <addr> [data-dir]` |
+
+## Protocol
+
+Clients speak NDJSON over TCP — each request and response is one JSON object followed by a newline.
+Commands are `GET`, `PUT`, `DEL`, and `TTL` (expire a key after N milliseconds); a background sweep evicts
+expired keys. Failed commands are never silently dropped — the server replies with a gRPC-style status
+object, and a `14` (`Unavailable`) from a cluster node carries the current leader's address, which the Go
+client extracts and reconnects to automatically.
+
+## Durability: the WAL
+
+The correctness bar for durability is not "a file appears after PUT". It is: crash at any point, recover,
+and end up with the same state. The design holds a few invariants that make that decidable:
+
+- **Single writer** — one goroutine appends to every WAL file, so ordering is trivially serialized.
+- **Log order = append order = durability order**, with no gaps or duplicates in a healthy log.
+- **The WAL is the source of truth**; in-memory metadata is a volatile cache rebuilt during recovery.
+- **Atomic transitions** — snapshots and rotations commit through temp file + fsync + rename, followed by
+  a directory fsync, so an intermediate crash never leaves a half-applied file behind.
+- **Bounded memory** — the WAL channel, hold queue, and temporary WAL never grow without limit.
+
+The initial policy is a synchronous fsync per mutation — simple and correct. If benchmarks later show a
+throughput ceiling, a group-commit batching writes before a single fsync can replace it without breaking
+the ordering contract.
+
+## Design decisions
+
+| Decision | Rationale |
+| --- | --- |
+| Raft from scratch, not `etcd/raft` | The replication details are the project. The cost is real, and it is the point. |
+| NDJSON framing over a custom binary protocol | Debuggable with any JSON tool, trivially parseable, and good enough for a cache protocol. |
+| WAL as source of truth | Recovery is decidable from disk alone — no trust in in-memory state. |
+| Sync fsync per mutation first | Correctness before throughput; group commit is a documented, benchmark-driven upgrade path. |
+| Rotation under a record bound | Keeps the active log and startup recovery time bounded instead of unbounded. |
+
+## Status & roadmap
+
+What is implemented and tested today:
+
+- Raft engine: election (randomized timeouts, no split votes), replication with commit/apply, durable log,
+  dynamic membership, linearizable reads, `InstallSnapshot` catch-up and compaction.
+- WAL durability with crash recovery, rotation, and snapshots.
+- NDJSON TCP protocol plus leader-redirect handling in the client.
+- End-to-end cluster tests: failover, restart recovery, add/remove membership, partitions, stale-node
+  election loss, snapshot restore — all under `-race`.
+
+What comes next: wiring `cacheyd` to start and join a raft group, then sharding keys across groups so
+each shard is its own replicated raft group.
