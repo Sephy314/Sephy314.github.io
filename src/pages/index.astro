@@ -18,7 +18,11 @@ const skills = [
   },
   {
     area: 'Distributed Systems',
-    items: ['CQRS', 'Event-driven (NATS)', 'Outbox pattern', 'API gateway', 'Microservices', 'Raft consensus', 'Log replication', 'Sharding'],
+    items: ['CQRS', 'Event-driven (NATS)', 'Outbox pattern', 'API gateway', 'Microservices', 'Raft consensus', 'EPaxos', 'Log replication', 'Sharding'],
+  },
+  {
+    area: 'Research & Evaluation',
+    items: ['Experimental design', 'Benchmarking', 'Performance analysis', 'Reproducibility', 'Threats to validity', 'TLA⁺'],
   },
   {
     area: 'Infrastructure',
@@ -30,7 +34,7 @@ const skills = [
   },
   {
     area: 'Languages',
-    items: ['Go', 'SQL'],
+    items: ['Go', 'Python', 'SQL'],
   },
   {
     area: 'Practices',
@@ -46,7 +50,7 @@ const schema = {
       name: 'Sephy314',
       url: 'https://sephy314.github.io',
       description:
-        'Backend / distributed systems engineer. Security, protocols, infrastructure, and reliability.',
+        'Distributed systems researcher and backend engineer. Consensus, replication, security, protocols, and infrastructure.',
       inLanguage: 'en',
       author: { '@type': 'Person', name: 'Sephy314', url: 'https://github.com/Sephy314' },
     },
@@ -54,16 +58,16 @@ const schema = {
       '@type': 'Person',
       name: 'Sephy314',
       url: 'https://sephy314.github.io',
-      jobTitle: 'Backend / Distributed Systems Engineer',
+      jobTitle: 'Distributed Systems Researcher & Backend Engineer',
       description:
-        'Backend / distributed systems engineer focused on secure authentication, distributed architecture, network protocols, and cloud infrastructure.',
+        'Distributed systems researcher and backend engineer working on consensus and replication, secure authentication, network protocols, and cloud infrastructure.',
       sameAs: ['https://github.com/Sephy314', 'https://www.linkedin.com/in/davie-ryu/'],
     },
   ],
 };
 ---
 
-<BaseLayout title="Backend / Distributed Systems Engineer">
+<BaseLayout title="Distributed Systems Researcher & Backend Engineer">
   <Fragment slot="head">
     <script type="application/ld+json" is:inline set:html={JSON.stringify(schema)} />
   </Fragment>
@@ -76,13 +80,13 @@ const schema = {
       </p>
 
       <h1 class="mt-6 max-w-2xl font-mono text-3xl font-semibold leading-tight text-bright sm:text-5xl">
-        Backend / Distributed Systems Engineer
+        Distributed Systems Researcher &amp; Backend Engineer
       </h1>
 
       <p class="mt-6 max-w-2xl text-base leading-7 text-mute sm:text-lg sm:leading-8">
-        I design and build secure backend systems — sender-constrained authentication,
-        command/query architectures, network protocols, and cloud infrastructure.
-        Engineering-first, trade-off explicit, reliability by default.
+        I research and build distributed systems — consensus and replication, sender-constrained
+        authentication, network protocols, and the infrastructure underneath. Measurement over
+        intuition, trade-offs stated up front, reliability by default.
       </p>
 
       <div class="mt-8 flex flex-wrap gap-3 font-mono text-sm">

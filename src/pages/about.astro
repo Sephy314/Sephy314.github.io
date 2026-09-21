@@ -39,6 +39,12 @@ const journey = [
     description:
       'Started Go and shifted to publishing work publicly on GitHub with an active git workflow. From here the projects tell the story — CNPS (protocol design), Chinwag (microservices + security), patchnote (CLI tooling), plaything_v2 (layered automation).',
   },
+  {
+    date: '2026',
+    title: 'Distributed systems research',
+    description:
+      'Moved from building distributed systems to measuring them: a reproducible benchmark lab comparing leader-based (Raft) and leaderless (EPaxos) consensus, with documented validity limits and an ACM-format paper draft reporting the measurements.',
+  },
 ];
 
 const interests = [
@@ -62,6 +68,14 @@ const interests = [
     title: 'Reliability engineering',
     body: 'Idempotency, fault tolerance, graceful degradation, and making eventual consistency explicit instead of pretending it is not there.',
   },
+  {
+    title: 'Consensus & replication',
+    body: 'Leader-based and leaderless agreement — Raft, Paxos, EPaxos — and the questions only measurement settles: when coordination earns its cost, and where the crossover between the two families sits.',
+  },
+  {
+    title: 'Systems evaluation',
+    body: 'Benchmark methodology, reproducibility, and honest validity limits. A number is only evidence when the experiment that produced it can be run again.',
+  },
 ];
 ---
 
@@ -75,13 +89,13 @@ const interests = [
       <h2 class="font-mono text-sm uppercase tracking-wider text-accent">// who I am</h2>
       <div class="doc mt-4">
         <p>
-          I'm a student developer from Korea focused on backend engineering and distributed systems. I've
-          been writing code since 2020, started backend development in 2024, and moved into advanced
-          backend engineering in 2026 — the systems-level work around distributed systems, security, and
-          infrastructure. I'm a Go enthusiast by preference.
+          I'm a student developer from Korea working on distributed systems — half building them, half
+          measuring them. I've been writing code since 2020, started backend development in 2024, and
+          moved into distributed systems research in 2026: consensus, replication, and the experiments
+          that decide which design actually holds up. I'm a Go enthusiast by preference.
         </p>
         <p>
-          My work sits at the intersection of <strong>security, distributed architecture, and
+          My work sits at the intersection of <strong>distributed systems research, security, and
           infrastructure</strong> — the parts of a system that are invisible until they break. I care less
           about which stack is fashionable and more about whether the design decisions are explicit,
           documented, and defensible.

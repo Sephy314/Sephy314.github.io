@@ -1,0 +1,152 @@
+---
+title: "Leader-consensus-comparison"
+tagline: "The Cost of Centralised Leadership in Distributed Consensus — Raft and EPaxos measured under one execution environment."
+description: "A reproducible research repository: a benchmark lab that runs Raft and EPaxos side by side and measures write throughput, write latency, write scalability, per-replica resource utilisation, and write behaviour during failures — plus a paper draft reporting the results."
+category: "Distributed Systems Research"
+status: "active"
+featured: true
+side: false
+order: 0
+languages: ["Go", "Python", "TeX", "TLA⁺"]
+tech: ["Raft", "EPaxos", "Consensus", "Docker Compose", "TLA⁺", "LaTeX", "Reproducibility", "Go 1.26"]
+repo: "https://github.com/Sephy314/Leader-consensus-comparison"
+started: "2026-09"
+updated: "2026-09"
+highlights:
+  - "Raft vs EPaxos measured under one execution environment — 129 configurations, six families, 10 repetitions each"
+  - "1,302 raw runs, 1,290 included; 12 excluded and replaced by a documented host-telemetry contamination rule"
+  - "Upstream consensus logic is vendored/pinned and never modified — the lab measures, it does not tune"
+  - "Threats to validity written before the conclusion: single-host, container scheduling, closed-loop client"
+  - "Every figure is regenerated from raw data — `make report` rebuilds the dataset, the tables, and the HTML report"
+---
+
+import ArchitectureDiagram from '../../components/ArchitectureDiagram.astro';
+import SystemOverview from '../../components/SystemOverview.astro';
+
+## Overview
+
+This repository is research, not an application. It asks one question — **what does centralised
+leadership actually cost in distributed consensus?** — and answers it by measuring two protocols under the
+same conditions instead of arguing from first principles.
+
+| Protocol | Leadership model | Implementation |
+| --- | --- | --- |
+| Raft | Leader-based | `github.com/hashicorp/raft`, pinned v1.7.3 |
+| EPaxos | Leaderless / egalitarian | `efficient/epaxos`, pinned commit, vendored |
+
+The deliverable is the **Consensus Lab**: a harness that builds both protocols into containers, drives
+them with one shared client, and produces the dataset the paper draft reports in Sections 3–5. The second
+deliverable is honesty about what those numbers mean.
+
+## Why measure instead of argue
+
+The case for leaderless consensus is usually a latency story: with no leader to route through, a write can
+commit from wherever the client happens to be. The case against it is a contention story: conflicting
+writes have to converge on the same order anyway, so the parallelism buys nothing and the coordination
+costs more.
+
+Both stories are true, under different workloads. That makes the interesting question not *which protocol
+is better* but *where the crossover sits* — an empirical question with a measurable answer. The matrix
+therefore varies the things the stories disagree about: replica count, workload mix, conflict rate, and
+failure behaviour.
+
+Because the comparison **is** the contribution, the lab does not touch the protocols. Upstream EPaxos is
+vendored at a pinned commit; HashiCorp Raft is a pinned module dependency wrapped in a thin adapter that
+contains no consensus logic of its own. Anything the lab could tune is something the results would then
+have to defend.
+
+## System layout
+
+<ArchitectureDiagram
+  title="Consensus Lab — measurement pipeline"
+  layers={[
+    { label: 'runtime', nodes: ['Docker Compose v2 + BuildKit — single host, one replica per container'] },
+    { label: 'protocols', nodes: ['Raft — hashicorp/raft v1.7.3 (leader-based)', 'EPaxos — efficient/epaxos (leaderless, vendored)'] },
+    { label: 'harness', nodes: ['client — one wire protocol for both', 'monitor — per-container resource sampler', 'runner — build / smoke / matrix'] },
+    { label: 'output', nodes: ['lab/report — processing, figures, self-contained HTML report'] },
+  ]}
+  caption="Both protocols are driven by the same client over the same wire protocol, so a difference in the results is a difference in the protocol — not in how it was exercised."
+/>
+
+## Inside the lab
+
+| Path | Responsibility |
+| --- | --- |
+| `lab/upstream/` | Vendored EPaxos (Apache-2.0, CMU 2013) and the pinned Raft module — never modified |
+| `lab/adapters/raft/` | Thin adapter around HashiCorp Raft; no consensus logic |
+| `lab/master/raft/` | Coordination service for Raft runs — leader reporting only, no measurement logic |
+| `lab/client/` | One benchmark client, one wire protocol, both protocols |
+| `lab/monitor/` | Host-side per-container resource sampler |
+| `lab/runner/` | Build, smoke, and matrix entry points |
+| `lab/report/` | Python processing, figure generation, HTML report |
+| `lab/configs/` | `matrix.json` and `smoke.json` — experiments as files, not as typed commands |
+| `paper/` | ACM-format LaTeX sources: sections, tables, bibliography |
+| `docs/` | Methodology, experiment design, reliability audit, operational notes |
+
+The staging matters as much as the structure. `make smoke` runs staged checks — build, cluster bring-up,
+request path, workload, injected failures, metrics — so a broken harness fails loudly before it burns
+hours of matrix time producing numbers nobody can trust.
+
+## What is measured
+
+<SystemOverview
+  title="experiment matrix — as run"
+  items={[
+    { label: 'Protocols', value: 'Raft (leader-based) vs EPaxos (leaderless), representative of each family' },
+    { label: 'Matrix', value: '129 configurations across six families, 10 repetitions each' },
+    { label: 'Raw runs', value: '1,302 collected; 1,290 included' },
+    { label: 'Exclusions', value: '12 runs discarded and replaced under a documented host-telemetry contamination rule' },
+    { label: 'Metrics', value: 'Write throughput, write latency, write scalability, per-replica resource utilisation, write behaviour during failure' },
+    { label: 'Toolchain', value: 'Go 1.26+, Python 3.10+, Docker with BuildKit, Docker Compose v2' },
+    { label: 'License', value: 'Apache-2.0, with third-party notices and a CITATION.cff' },
+  ]}
+/>
+
+The exclusion rule is worth calling out. Contaminated runs are not silently dropped to make a chart look
+cleaner — they are counted, attributed to a host-telemetry condition, and replaced, with the count
+reported. A dataset that hides its own failures cannot support a conclusion about reliability.
+
+## Reproducibility
+
+```bash
+cd lab
+make build        # Go binaries + upstream EPaxos + lab image
+make smoke        # staged smoke gate before any real run
+make matrix       # the full experiment matrix (hours)
+make report       # raw -> processed -> figures -> HTML report -> validation
+make validate     # validate the report against the underlying data
+```
+
+`lab/results/` is generated and deliberately not tracked by git. That is the property that makes the work
+checkable: the dataset can be rebuilt from the configurations instead of trusted as an artifact, and
+`make validate` re-checks the report against the data it claims to summarise. The report itself is a
+single self-contained HTML file with charts embedded as base64 PNGs — it opens offline, which matters when
+the point is that a reader can verify the claim without asking me for anything.
+
+## Threats to validity
+
+These are written down rather than discovered by a reviewer, and they bound every claim in the paper:
+
+- **Single-machine execution** — all replicas run on one host, so results may not generalise to
+  multi-machine deployments.
+- **Container scheduling effects** — CPU sharing, container overhead, and network namespacing all
+  influence measurements.
+- **Closed-loop client** — the workload is batch-oriented, so throughput and latency are measured per
+  batch, not as a precise open-loop load.
+- **Approximate recovery measurement** — failure recovery is batch-granular, not a precise availability
+  figure.
+- **Local bridge networking** — no WAN latency; wide-area behaviour is out of scope.
+- **Implementation-specific results** — findings describe `hashicorp/raft` and `efficient/epaxos`, not
+  the protocols in the abstract.
+- **Representative, not universal** — Raft and EPaxos stand in for leader-based and leaderless consensus;
+  they do not exhaust either category.
+
+## Status
+
+The experiment matrix has been run and processed, and the paper draft reports the measurements in
+Sections 3–5. The abstract, threats-to-validity section, conclusion, and appendices are still being
+written, and the PDF is published as a release artifact as it evolves.
+
+The framing is deliberate: no claim is made about behaviour that was not measured. Every reported number
+traces back to `lab/results/` under the conditions documented in `docs/experiment-design.md` — which is
+what separates a benchmark from an opinion with a graph attached.
