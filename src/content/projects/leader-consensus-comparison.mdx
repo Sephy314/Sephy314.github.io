@@ -1,23 +1,24 @@
 ---
 title: "Leader-consensus-comparison"
-tagline: "The Cost of Centralised Leadership in Distributed Consensus — Raft and EPaxos measured under one execution environment."
-description: "A reproducible research repository: a benchmark lab that runs Raft and EPaxos side by side and measures write throughput, write latency, write scalability, per-replica resource utilisation, and write behaviour during failures — plus a paper draft reporting the results."
+tagline: "The Effects of Leadership in Distributed Consensus — Raft and EPaxos measured through two independent implementations each."
+description: "A reproducible research repository: a consensus benchmark lab comparing Raft and EPaxos through four implementations, measuring write throughput, latency, scalability, per-replica resource use, and write behaviour during failures — with a correctness harness behind every one of them and a released paper on top."
 category: "Distributed Systems Research"
 status: "active"
 featured: true
 side: false
 order: 0
 languages: ["Go", "Python", "TeX", "TLA⁺"]
-tech: ["Raft", "EPaxos", "Consensus", "Docker Compose", "TLA⁺", "LaTeX", "Reproducibility", "Go 1.26"]
+tech: ["Raft", "EPaxos", "Consensus", "Docker Compose", "tc/netem", "TLA⁺", "LaTeX", "Reproducibility"]
 repo: "https://github.com/Sephy314/Leader-consensus-comparison"
 started: "2026-09"
 updated: "2026-09"
 highlights:
-  - "Raft vs EPaxos measured under one execution environment — 129 configurations, six families, 10 repetitions each"
-  - "1,302 raw runs, 1,290 included; 12 excluded and replaced by a documented host-telemetry contamination rule"
-  - "Upstream consensus logic is vendored/pinned and never modified — the lab measures, it does not tune"
-  - "Threats to validity written before the conclusion: single-host, container scheduling, closed-loop client"
-  - "Every figure is regenerated from raw data — `make report` rebuilds the dataset, the tables, and the HTML report"
+  - "Paper written from abstract to conclusion, released as a PDF with a Korean translation alongside"
+  - "Two implementations per protocol — HashiCorp and etcd Raft, efficient and nvanbenschoten EPaxos — so a gap can be attributed to the protocol, not the library"
+  - "129 configurations across seven families, 10 repetitions each; 1,290 included runs from 1,302 raw"
+  - "Correctness harness: 18/18 deterministic tests pass across all four implementations"
+  - "Failure cost follows the failed role: 1.81–4.74 s of lost write availability for a killed Raft leader, under 0.09 s for a follower or an EPaxos replica"
+  - "Unmatched persistence in the recorded suite is disclosed, not smoothed over"
 ---
 
 import ArchitectureDiagram from '../../components/ArchitectureDiagram.astro';
@@ -25,18 +26,25 @@ import SystemOverview from '../../components/SystemOverview.astro';
 
 ## Overview
 
-This repository is research, not an application. It asks one question — **what does centralised
-leadership actually cost in distributed consensus?** — and answers it by measuring two protocols under the
-same conditions instead of arguing from first principles.
+This repository is research, not an application. It asks one question — **what does leadership actually
+cost in distributed consensus?** — and answers it by measuring two protocol families under the same
+conditions instead of arguing from first principles.
 
 | Protocol | Leadership model | Implementation |
 | --- | --- | --- |
 | Raft | Leader-based | `github.com/hashicorp/raft`, pinned v1.7.3 |
-| EPaxos | Leaderless / egalitarian | `efficient/epaxos`, pinned commit, vendored |
+| Raft | Leader-based | `go.etcd.io/raft` v3.7.0, lab adapter |
+| EPaxos | Leaderless / egalitarian | `efficient/epaxos`, pinned commit (CMU 2013), vendored |
+| EPaxos | Leaderless / egalitarian | `nvanbenschoten/epaxos`, pinned commit, vendored |
 
-The deliverable is the **Consensus Lab**: a harness that builds both protocols into containers, drives
-them with one shared client, and produces the dataset the paper draft reports in Sections 3–5. The second
-deliverable is honesty about what those numbers mean.
+Two implementations per protocol is the point. With one, a throughput gap cannot be attributed to the
+protocol rather than to the library that happens to implement it — so each family is measured twice, and a
+separate correctness harness checks that all four actually perform consistent consensus execution.
+
+The result is two deliverables: the **Consensus Lab**, a harness that builds every implementation into
+containers, drives them with one shared client, and produces the measured dataset; and the **paper**,
+*The Effects of Leadership in Distributed Consensus*, written from abstract to conclusion and released as
+a PDF.
 
 ## Why measure instead of argue
 
@@ -50,10 +58,10 @@ is better* but *where the crossover sits* — an empirical question with a measu
 therefore varies the things the stories disagree about: replica count, workload mix, conflict rate, and
 failure behaviour.
 
-Because the comparison **is** the contribution, the lab does not touch the protocols. Upstream EPaxos is
-vendored at a pinned commit; HashiCorp Raft is a pinned module dependency wrapped in a thin adapter that
-contains no consensus logic of its own. Anything the lab could tune is something the results would then
-have to defend.
+Because the comparison **is** the contribution, the lab does not touch the protocols. The upstream EPaxos
+implementations are vendored at pinned commits and the Raft implementations are pinned module
+dependencies; each is wrapped in a thin adapter that contains no consensus logic of its own. Anything the
+lab could tune is something the results would then have to defend.
 
 ## System layout
 
@@ -61,44 +69,45 @@ have to defend.
   title="Consensus Lab — measurement pipeline"
   layers={[
     { label: 'runtime', nodes: ['Docker Compose v2 + BuildKit — single host, one replica per container'] },
-    { label: 'protocols', nodes: ['Raft — hashicorp/raft v1.7.3 (leader-based)', 'EPaxos — efficient/epaxos (leaderless, vendored)'] },
-    { label: 'harness', nodes: ['client — one wire protocol for both', 'monitor — per-container resource sampler', 'runner — build / smoke / matrix'] },
+    { label: 'implementations', nodes: ['hashicorp/raft v1.7.3', 'go.etcd.io/raft v3.7.0', 'efficient/epaxos (vendored)', 'nvanbenschoten/epaxos (vendored)'] },
+    { label: 'harness', nodes: ['client — one wire protocol for all four', 'monitor — per-container resource sampler', 'runner — build / smoke / correctness / matrix'] },
     { label: 'output', nodes: ['lab/report — processing, figures, self-contained HTML report'] },
   ]}
-  caption="Both protocols are driven by the same client over the same wire protocol, so a difference in the results is a difference in the protocol — not in how it was exercised."
+  caption="All four implementations are driven by the same client over the same wire protocol, so a difference in the results is a difference in the implementation — not in how it was exercised."
 />
 
 ## Inside the lab
 
 | Path | Responsibility |
 | --- | --- |
-| `lab/upstream/` | Vendored EPaxos (Apache-2.0, CMU 2013) and the pinned Raft module — never modified |
-| `lab/adapters/raft/` | Thin adapter around HashiCorp Raft; no consensus logic |
+| `lab/upstream/` | Vendored upstreams, pinned and never modified: `efficient/epaxos` (Apache-2.0, CMU 2013), `nvanbenschoten/epaxos`, and the Raft modules |
+| `lab/adapters/` | One thin adapter per implementation — `raft`, `etcdraft`, `nvbepaxos`; wiring only, no consensus logic |
 | `lab/master/raft/` | Coordination service for Raft runs — leader reporting only, no measurement logic |
-| `lab/client/` | One benchmark client, one wire protocol, both protocols |
+| `lab/client/` | One benchmark client, one wire protocol, all four implementations |
 | `lab/monitor/` | Host-side per-container resource sampler |
-| `lab/runner/` | Build, smoke, and matrix entry points |
+| `lab/runner/` | Build, smoke, correctness, and matrix entry points |
 | `lab/report/` | Python processing, figure generation, HTML report |
-| `lab/configs/` | `matrix.json` and `smoke.json` — experiments as files, not as typed commands |
-| `paper/` | ACM-format LaTeX sources: sections, tables, bibliography |
-| `docs/` | Methodology, experiment design, reliability audit, operational notes |
+| `lab/configs/` | Experiments as files, not as typed commands: matrix, smoke, sensitivity, commcost, persistence, networkdelay, conflictvalidation |
+| `paper/` | ACM-format LaTeX sources, with `paper/release/` holding the published PDFs (English and Korean) |
+| `lab/docs/`, `docs/` | Benchmark protocol, audit and reproducibility notes; methodology and experiment design |
 
 The staging matters as much as the structure. `make smoke` runs staged checks — build, cluster bring-up,
 request path, workload, injected failures, metrics — so a broken harness fails loudly before it burns
-hours of matrix time producing numbers nobody can trust.
+hours of matrix time producing numbers nobody can trust, and `make correctness` checks the thing the
+benchmark assumes: that each implementation applies every acknowledged request exactly once.
 
 ## What is measured
 
 <SystemOverview
-  title="experiment matrix — as run"
+  title="the recorded matrix — as run"
   items={[
-    { label: 'Protocols', value: 'Raft (leader-based) vs EPaxos (leaderless), representative of each family' },
-    { label: 'Matrix', value: '129 configurations across six families, 10 repetitions each' },
+    { label: 'Implementations', value: 'HashiCorp Raft, etcd Raft, efficient/EPaxos, nvanbenschoten/EPaxos — two per protocol' },
+    { label: 'Matrix', value: '129 configurations across seven families, 10 repetitions each' },
     { label: 'Raw runs', value: '1,302 collected; 1,290 included' },
     { label: 'Exclusions', value: '12 runs discarded and replaced under a documented host-telemetry contamination rule' },
+    { label: 'Correctness', value: '18/18 deterministic tests pass across all four implementations' },
     { label: 'Metrics', value: 'Write throughput, write latency, write scalability, per-replica resource utilisation, write behaviour during failure' },
     { label: 'Toolchain', value: 'Go 1.26+, Python 3.10+, Docker with BuildKit, Docker Compose v2' },
-    { label: 'License', value: 'Apache-2.0, with third-party notices and a CITATION.cff' },
   ]}
 />
 
@@ -106,15 +115,90 @@ The exclusion rule is worth calling out. Contaminated runs are not silently drop
 cleaner — they are counted, attributed to a host-telemetry condition, and replaced, with the count
 reported. A dataset that hides its own failures cannot support a conclusion about reliability.
 
+An implementation is only allowed to be slow for the right reason, so `make correctness` runs 18
+deterministic checks per implementation family — sequential, concurrent, and under leader, follower, and
+replica failures. All four pass: every replied request is applied exactly once, surviving replicas agree on
+the final state, and Raft restarts recover the committed state.
+
+## Headline results
+
+Medians over ten independent repetitions, from the scaling family at 100 % writes and concurrency 32 —
+Raft against EPaxos, in requests per second and p50 write latency:
+
+| Replicas | Raft (req/s) | EPaxos (req/s) | EPaxos ÷ Raft | Raft p50 (ms) | EPaxos p50 (ms) |
+| --- | --- | --- | --- | --- | --- |
+| 3 | 4,351 | 5,292 | 1.22× | 6.9 | 5.6 |
+| 5 | 3,150 | 5,443 | 1.73× | 9.2 | 5.5 |
+| 7 | 2,590 | 3,053 | 1.18× | 12.0 | 5.4 |
+| 9 | 2,113 | 2,094 | 0.99× | 14.6 | 5.5 |
+
+Medians rather than means because a handful of repetitions stalled — two Raft runs under elevated host
+load, six EPaxos runs at low and high load. The means are lower for both protocols at every replica count,
+so reporting them would have described the stalls rather than the protocols.
+
+What the wider evaluation found:
+
+- **The leaderless advantage is real, but it does not survive scale.** EPaxos led on median throughput at
+  3, 5, and 7 replicas and on median latency at every replica count — then the throughput gap closed at 9
+  replicas (0.99×). Throughput fell for *both* protocols as replicas were added, by 60 % for EPaxos and
+  51 % for Raft, so the scaling penalty is not specific to leader-based ordering.
+- **The load range matters more than the replica count.** At concurrency 1, Raft's median was 304 req/s
+  against 175 req/s for EPaxos. At concurrency 256 it inverted: 19,333 req/s against 41,077 req/s, with
+  p50 latency 12.1 ms against 5.6 ms.
+- **Failure cost follows the failed role, not the protocol.** Killing the Raft leader left a 1.81–4.74 s
+  write-availability gap and 2,169–4,133 failed requests. Killing a Raft follower or an EPaxos replica
+  stayed below 0.09 s and 106 failed requests.
+- **CPU totals were similar; the shape was not.** Aggregate utilisation was 35.8 % (Raft) against 35.0 %
+  (EPaxos), but in Raft the *leader* used less CPU than its followers — a leader/follower ratio of
+  0.61–0.75, consistent with the followers carrying the log persistence and apply work — while EPaxos
+  stayed flat at 22.4–23.0 %. Peak per-replica RSS was about 1.8× higher for EPaxos: 46.8 MB against
+  26.4 MB.
+- **The conflict sweep did not move throughput** — medians spanned 4,152–4,504 req/s (Raft) and
+  5,079–5,392 req/s (EPaxos) — but the EPaxos fast/slow-path counters show that a large conflict fraction
+  did push commands onto the slow path. *Did throughput move?* and *did contention happen?* are answered
+  as separate questions instead of being conflated into one.
+- **EPaxos timed out at seven and nine replicas** — 30–250 request timeouts per run at the 2,000 ms client
+  timeout — which accounts for its reduced throughput under the closed-loop concurrency accounting. The
+  successful requests still completed in 5.4–5.6 ms, the same as at three replicas.
+
+## Experiments after the recorded suite
+
+Three later families sit on top of the recorded dataset. Each configures its own experiments and writes to
+its own results subtree, so the recorded dataset is never read or written by them — and each has a
+`-dry-run` target that expands and validates its configuration without executing anything.
+
+| Family | What it varies | Why it exists |
+| --- | --- | --- |
+| Persistence matching | Only how each implementation persists consensus state | The recorded Raft implementations persist (BoltDB, a fsynced write-ahead log) while both recorded EPaxos implementations keep state in memory, so the recorded throughput gap mixes consensus structure with a storage-path difference |
+| Clean network delay | A fixed one-way latency of 0/1/3/5/10 ms, no jitter, applied with `tc/netem` in each replica's network namespace | The archived `commcost` family injected delay *inside* each implementation's send path, so it ranked injection points as well as implementations — those numbers stay a separate dataset |
+| Conflict validation | The configured hot-key fraction *and* the number of distinct hot keys | Measures the *realized* conflict fraction instead of asserting the configured one, and reports the EPaxos conflict and fast/slow-path counters where the implementation provides them |
+
+Two details carry the weight here. The persistence family uses only modes an implementation actually
+provides — `nvanbenschoten/epaxos` exposes an in-memory `Storage` and no durable mode, so that cell is
+skipped and reported as a gap rather than filled with a mechanism the lab would have had to write itself.
+And the network-delay runner verifies the installed qdisc against the kernel, storing the commands, their
+output, and that verification in the run's `network.json`: a run whose emulation did not apply fails
+instead of being recorded as a delay measurement.
+
+The archived communication-cost points are still reported as their own dataset: at a 10 ms injected cost,
+HashiCorp Raft lost 72 % of its throughput, nvanbenschoten EPaxos 81 %, the original EPaxos 96 %, and etcd
+Raft collapsed by 94 % already at 1 ms.
+
 ## Reproducibility
 
 ```bash
 cd lab
-make build        # Go binaries + upstream EPaxos + lab image
-make smoke        # staged smoke gate before any real run
-make matrix       # the full experiment matrix (hours)
-make report       # raw -> processed -> figures -> HTML report -> validation
-make validate     # validate the report against the underlying data
+make build              # Go binaries + upstream implementations + lab image
+make smoke              # staged smoke gate before any real run
+make correctness        # 18 deterministic consensus checks, all four implementations
+make matrix             # the recorded experiment matrix (hours)
+make report             # raw -> processed -> figures -> HTML report -> validation
+make validate           # validate the report against the underlying data
+
+make persistence-dry-run    # expand + validate a later family, run nothing
+make persistence            # durable vs in-memory, four implementations, r3 + r5
+make network-delay          # OS-level tc/netem delay, no jitter
+make conflict-validation    # configured vs realized conflict
 ```
 
 `lab/results/` is generated and deliberately not tracked by git. That is the property that makes the work
@@ -129,23 +213,40 @@ These are written down rather than discovered by a reviewer, and they bound ever
 
 - **Single-machine execution** — all replicas run on one host, so results may not generalise to
   multi-machine deployments.
-- **Container scheduling effects** — CPU sharing, container overhead, and network namespacing all
+- **Container scheduling effects** — container overhead, CPU sharing, and network namespacing all
   influence measurements.
 - **Closed-loop client** — the workload is batch-oriented, so throughput and latency are measured per
   batch, not as a precise open-loop load.
-- **Approximate recovery measurement** — failure recovery is batch-granular, not a precise availability
-  figure.
+- **Approximate recovery measurement** — recovery is batch-granular, not a precise availability figure.
 - **Local bridge networking** — no WAN latency; wide-area behaviour is out of scope.
-- **Implementation-specific results** — findings describe `hashicorp/raft` and `efficient/epaxos`, not
-  the protocols in the abstract.
+- **Unmatched persistence in the recorded suite** — the recorded Raft implementations persist consensus
+  state while both recorded EPaxos implementations keep it in memory, so the recorded throughput
+  comparison combines consensus structure with a storage-path difference. Until the persistence-matching
+  family is reported, that difference must not be read as a protocol-level effect.
+- **Legacy in-adapter delay injection** — the archived `commcost` family injected delay inside each
+  implementation's send path, so its ranking reflects the injection point as well as the implementation.
+- **Configuration-bound availability gaps** — a measured gap is bounded by the configured failure
+  detection budget (heartbeat 1000 ms, election 2000 ms) and, for election runs, by the injected isolation
+  window. Gaps are reported as observed under that configuration, not as generic recovery times.
+- **Resource contention is not assumed** — whether local CPU bounded the large replica counts is decided
+  from recorded per-replica telemetry (the busiest replica reached 38 % and 35 % of its 2-CPU quota at 7
+  and 9 replicas, with host telemetry flagging 0 of 20 runs), not from the requested quota.
+- **Implementation-specific behaviour** — results reflect four specific implementations, not the protocols
+  in the abstract; the sensitivity and communication-cost experiments measure how much of the difference
+  is implementation-level rather than protocol-level.
 - **Representative, not universal** — Raft and EPaxos stand in for leader-based and leaderless consensus;
   they do not exhaust either category.
 
 ## Status
 
-The experiment matrix has been run and processed, and the paper draft reports the measurements in
-Sections 3–5. The abstract, threats-to-validity section, conclusion, and appendices are still being
-written, and the PDF is published as a release artifact as it evolves.
+The recorded matrix has been run and processed, the correctness harness passes for all four
+implementations, and the paper is written from abstract to conclusion. The released PDF lives in
+`paper/release/` — English, with a Korean translation alongside — and `paper/` rebuilds it from source.
+
+The three later families are configured and write to their own result subtrees; the headline numbers above
+are the recorded dataset and do not yet include them. Two configuration reports ship with the data:
+`failure-configuration.md`, which puts the failure-detection budget beside every measured availability
+gap, and `resource-contention.md`, which reports per-replica CPU saturation at each replica count.
 
 The framing is deliberate: no claim is made about behaviour that was not measured. Every reported number
 traces back to `lab/results/` under the conditions documented in `docs/experiment-design.md` — which is
