@@ -1,7 +1,7 @@
 ---
 title: "Chinwag"
 tagline: "A secure distributed communication platform designed with modern authentication and scalable backend architecture."
-description: "Real-time streaming chat service running live at chinwag.duckdns.org — Go (Echo v5) + Next.js 16, DPoP (RFC 9449) authentication, and CQRS reconciled over NATS JetStream."
+description: "Real-time streaming chat service — Go (Echo v5) + Next.js 16, DPoP (RFC 9449) authentication, and CQRS reconciled over NATS JetStream."
 category: "Distributed Systems / Security"
 status: "active"
 featured: true
@@ -25,11 +25,10 @@ import SystemOverview from '../../components/SystemOverview.astro';
 
 ## Overview
 
-Chinwag is a real-time streaming chat service built on a small microservice architecture, **running live
-at https://chinwag.duckdns.org**. It is not a demo wrapper around a chat SDK — the interesting parts are
-the ones that are usually hidden: how a token proves it is being used by the entity it was issued to, how
-a write eventually becomes a consistent read, and how five services stay deployable on a single-node k3s
-cluster.
+Chinwag is a real-time streaming chat service built on a small microservice architecture. It is not a
+demo wrapper around a chat SDK — the interesting parts are the ones that are usually hidden: how a token
+proves it is being used by the entity it was issued to, how a write eventually becomes a consistent read,
+and how five services stay deployable on a single-node k3s cluster.
 
 Backend in Go 1.26+ (Echo v5), frontend in Next.js 16 (React 19). Communication between services is
 event-driven
@@ -186,9 +185,9 @@ POST /chat/rooms/{id}/messages
 
 ## Deployment
 
-Chinwag runs live at **https://chinwag.duckdns.org**. The project ships a Dockerfile per component (a
-parameterized multi-stage builder with `--build-arg SERVICE=...`) and `infra/k3s/` with the full manifest
-set: Namespace, ConfigMap, Secret, Postgres/Redis/NATS, all Deployments + Services, and a Traefik Ingress.
+The project ships a Dockerfile per component (a parameterized multi-stage builder with
+`--build-arg SERVICE=...`) and `infra/k3s/` with the full manifest set: Namespace, ConfigMap, Secret,
+Postgres/Redis/NATS, all Deployments + Services, and a Traefik Ingress.
 
 ```bash
 cd infra/k3s
